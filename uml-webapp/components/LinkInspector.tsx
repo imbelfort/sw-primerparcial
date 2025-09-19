@@ -28,6 +28,7 @@ export function LinkInspector({
       return;
     }
     
+    // Inicializamos con los valores correctos del enlace seleccionado
     setFormData({
       label: selected.sourceRole || "",
       sourceMultiplicity: selected.sourceMultiplicity || "",
@@ -36,17 +37,24 @@ export function LinkInspector({
   }, [selected?.id]);
 
   const handleChange = (field: string, value: string) => {
+    // Actualizamos el estado local del formulario
     const newData = { ...formData, [field]: value };
     setFormData(newData);
     
-    // Map the form data to the expected LinkData structure
-    const linkData = {
-      sourceRole: newData.label,
-      sourceMultiplicity: newData.sourceMultiplicity,
-      targetMultiplicity: newData.targetMultiplicity
-    };
+    // Preparamos los datos para el cambio
+    const update: Partial<LinkData> = {};
     
-    onChange(linkData);
+    // Mapeamos los campos del formulario a los campos correctos de LinkData
+    if (field === 'label') {
+      update.sourceRole = value;
+    } else if (field === 'sourceMultiplicity') {
+      update.sourceMultiplicity = value;
+    } else if (field === 'targetMultiplicity') {
+      update.targetMultiplicity = value;
+    }
+    
+    // Enviamos solo los campos que han cambiado
+    onChange(update);
   };
 
   if (!selected) {

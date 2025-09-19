@@ -30,79 +30,122 @@ export function getLinkDataFromCell(cell: any): LinkData | null {
     else if (type === "uml.Dependency") kind = "dependency";
     else if (type === "uml.Generalization") kind = "generalization";
   }
-  // Extract labels by convention: label[0]=source mult, label[1]=target mult, label[2]=source role, label[3]=target role
-  const labels = (cell.get("labels") || []) as any[];
-  const getText = (i: number) => labels[i]?.attrs?.text?.text as string | undefined;
+  
+  // Obtener todos los labels y mapearlos por su tipo
+  const labels = (cell.get("labels") || []) as Array<{id?: string, attrs?: any}>;
+  
+  // Función para encontrar un label por su id
+  const findLabel = (id: string) => {
+    const label = labels.find(l => l.id === id);
+    return label?.attrs?.text?.text;
+  };
+  
   return {
     id,
     kind,
-    sourceMultiplicity: getText(0),
-    targetMultiplicity: getText(1),
-    sourceRole: getText(2),
-    targetRole: getText(3),
+    sourceMultiplicity: findLabel('source-multiplicity'),
+    targetMultiplicity: findLabel('target-multiplicity'),
+    sourceRole: findLabel('relationship-name'),
+    targetRole: findLabel('target-role'),
   };
 }
 
 export function applyLinkDataToCell(cell: any, data: Partial<LinkData>) {
-  if (!cell?.isLink?.()) return;
-  
-  try {
-    const labels = cell.get('labels') || [];
-    const newLabels: any[] = [];
-
-    // Label central (nombre de la relación)
-    if (data.sourceRole) {
-      newLabels[0] = {
-        position: 0.5, // centrado
-        attrs: {
-          text: {
-            text: data.sourceRole,
-            fontSize: 12,
-            fill: '#000',
-          },
-        },
-      };
-    }
-
-    // Multiplicidad origen
-    if (data.sourceMultiplicity !== undefined) {
-      newLabels[1] = {
-        position: { distance: 0.1, offset: -10 }, // posición relativa al inicio
-        attrs: {
-          text: {
-            text: data.sourceMultiplicity,
-            fontSize: 10,
-            fill: '#000',
-          },
-        },
-      };
-    }
-
-    // Multiplicidad destino
-    if (data.targetMultiplicity !== undefined) {
-      newLabels[2] = {
-        position: { distance: 0.9, offset: -10 }, // posición relativa al final
-        attrs: {
-          text: {
-            text: data.targetMultiplicity,
-            fontSize: 10,
-            fill: '#000',
-          },
-        },
-      };
-    }
-
-    // Actualizar el tipo de enlace si es necesario
-    if (data.kind) {
-      cell.set('type', `link.${data.kind}`);
-    }
-
-    // Aplicar los labels al modelo
-    cell.set('labels', newLabels);
-    
-  } catch (error) {
-    console.error('Error en applyLinkDataToCell:', error);
+  // Verificación más estricta del objeto cell
+  if (!cell || typeof cell !== 'object') {
+    console.warn('applyLinkDataToCell: cell no es un objeto válido', cell);
+    return;
   }
+
+  // Verificar si el objeto está completamente inicializado
+  if (!cell.isLink || !cell.isLink()) {
+    console.warn('applyLinkDataToCell: cell no es un enlace de JointJS válido', cell);
+    return;
+  }
+  
+  // Asegurarnos de que el objeto tenga la propiedad 'markup' necesaria
+  if (!cell.markup && cell.initializeMarkup) {
+    try {
+      cell.initializeMarkup();
+    } catch (e) {
+      console.error('Error al inicializar el markup del enlace:', e);
+      return;
+    }
+  }
+
+  // Usar requestAnimationFrame para asegurar que el DOM esté listo
+  requestAnimationFrame(() => {
+    try {
+      // Obtener los labels existentes o crear un array vacío
+      const existingLabels = (cell.get('labels') || []) as Array<{id?: string, attrs?: any}>;
+      const labelsMap = new Map<string, any>();
+      
+      // Mapear los labels existentes por su ID para actualizarlos
+      existingLabels.forEach(label => {
+        if (label.id) {
+          labelsMap.set(label.id, label);
+        }
+      });
+
+      // Función para actualizar o crear un label
+      const updateOrCreateLabel = (id: string, text: string | undefined, position: any, fontSize: number = 10) => {
+        if (text === undefined) return;
+        
+        const baseLabel = labelsMap.get(id) || { id, attrs: {} };
+        
+        labelsMap.set(id, {
+          ...baseLabel,
+          position,
+          attrs: {
+            ...baseLabel.attrs,
+            text: {
+              ...baseLabel.attrs?.text,
+              text,
+              fontSize,
+              fill: '#000',
+            },
+          },
+        });
+      };
+
+      // Actualizar o crear cada label según corresponda
+      updateOrCreateLabel('relationship-name', data.sourceRole, 0.5, 12); // Nombre de la relación
+      updateOrCreateLabel('source-multiplicity', data.sourceMultiplicity, { distance: 0.1, offset: -10 });
+      updateOrCreateLabel('target-multiplicity', data.targetMultiplicity, { distance: 0.9, offset: -10 });
+      
+      // Convertir el mapa de vuelta a un array
+      const newLabels = Array.from(labelsMap.values());
+
+      // Actualizar el tipo de enlace si es necesario
+      if (data.kind) {
+        cell.set('type', `link.${data.kind}`);
+      }
+
+      // Aplicar los labels al modelo solo si hay algo que actualizar
+      if (newLabels.length > 0) {
+        try {
+          // Usar el método prop() en lugar de set() si está disponible
+          if (cell.prop) {
+            cell.prop('labels', newLabels);
+          } else if (cell.set) {
+            cell.set('labels', newLabels);
+          } else {
+            console.warn('applyLinkDataToCell: cell no tiene métodos set ni prop', cell);
+          }
+          
+          // Forzar una actualización del renderizado
+          if (cell.trigger) {
+            cell.trigger('change:labels');
+          }
+        } catch (error) {
+          console.error('Error al actualizar los labels:', error);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error en applyLinkDataToCell:', error, { cell, data });
+    }
+  });
 }
 
 function autoResizeUmlCell(cell: any) {
