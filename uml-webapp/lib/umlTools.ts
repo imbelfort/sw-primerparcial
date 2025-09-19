@@ -1,7 +1,148 @@
 import * as joint from "jointjs";
 
 export type NodeToolKind = "uml-class" | "uml-interface" | "uml-abstract";
-export type LinkToolKind = "assoc" | "generalization";
+export type LinkToolKind = "assoc" | "aggregation" | "composition" | "dependency" | "generalization";
+
+function estimateTextWidthPx(text: string) {
+  // Simple heuristic: average 8px per character + padding
+  const avgChar = 8;
+  return text.length * avgChar + 40; // padding
+}
+
+export type LinkData = {
+  id: string;
+  kind: LinkToolKind | "standard";
+  sourceMultiplicity?: string;
+  targetMultiplicity?: string;
+  sourceRole?: string;
+  targetRole?: string;
+};
+
+export function getLinkDataFromCell(cell: any): LinkData | null {
+  if (!cell?.isLink?.()) return null;
+  const id = cell.id as string;
+  const type = cell.get?.("type") as string | undefined;
+  let kind: LinkData["kind"] = "standard";
+  if (type?.startsWith("uml.")) {
+    if (type === "uml.Association") kind = "assoc";
+    else if (type === "uml.Aggregation") kind = "aggregation";
+    else if (type === "uml.Composition") kind = "composition";
+    else if (type === "uml.Dependency") kind = "dependency";
+    else if (type === "uml.Generalization") kind = "generalization";
+  }
+  // Extract labels by convention: label[0]=source mult, label[1]=target mult, label[2]=source role, label[3]=target role
+  const labels = (cell.get("labels") || []) as any[];
+  const getText = (i: number) => labels[i]?.attrs?.text?.text as string | undefined;
+  return {
+    id,
+    kind,
+    sourceMultiplicity: getText(0),
+    targetMultiplicity: getText(1),
+    sourceRole: getText(2),
+    targetRole: getText(3),
+  };
+}
+
+export function applyLinkDataToCell(cell: any, data: Partial<LinkData>) {
+  if (!cell?.isLink?.()) return;
+  
+  try {
+    const labels = cell.get('labels') || [];
+    const newLabels: any[] = [];
+
+    // Label central (nombre de la relación)
+    if (data.sourceRole) {
+      newLabels[0] = {
+        position: 0.5, // centrado
+        attrs: {
+          text: {
+            text: data.sourceRole,
+            fontSize: 12,
+            fill: '#000',
+          },
+        },
+      };
+    }
+
+    // Multiplicidad origen
+    if (data.sourceMultiplicity !== undefined) {
+      newLabels[1] = {
+        position: { distance: 0.1, offset: -10 }, // posición relativa al inicio
+        attrs: {
+          text: {
+            text: data.sourceMultiplicity,
+            fontSize: 10,
+            fill: '#000',
+          },
+        },
+      };
+    }
+
+    // Multiplicidad destino
+    if (data.targetMultiplicity !== undefined) {
+      newLabels[2] = {
+        position: { distance: 0.9, offset: -10 }, // posición relativa al final
+        attrs: {
+          text: {
+            text: data.targetMultiplicity,
+            fontSize: 10,
+            fill: '#000',
+          },
+        },
+      };
+    }
+
+    // Actualizar el tipo de enlace si es necesario
+    if (data.kind) {
+      cell.set('type', `link.${data.kind}`);
+    }
+
+    // Aplicar los labels al modelo
+    cell.set('labels', newLabels);
+    
+  } catch (error) {
+    console.error('Error en applyLinkDataToCell:', error);
+  }
+}
+
+function autoResizeUmlCell(cell: any) {
+  if (!cell?.get) return;
+  const type = cell.get("type");
+  const isUml = typeof type === "string" && type.startsWith("uml.");
+  if (isUml) {
+    const name: string = cell.get("name") || "";
+    const attributes: string[] = cell.get("attributes") || [];
+    const methods: string[] = cell.get("methods") || [];
+
+    const lineHeight = 18;
+    const headerHeight = 26;
+    const sectionGap = 8;
+    const paddingV = 20;
+
+    let height = paddingV + headerHeight;
+    if (attributes.length > 0) height += sectionGap + attributes.length * lineHeight;
+    if (methods.length > 0) height += sectionGap + methods.length * lineHeight;
+    height += paddingV;
+
+    const longest = Math.max(
+      name.length,
+      ...attributes.map((s) => s.length),
+      ...methods.map((s) => s.length)
+    );
+    const width = Math.max(160, Math.min(600, estimateTextWidthPx("X".repeat(longest))));
+
+    try {
+      cell.resize(width, height);
+    } catch {}
+  } else {
+    // Fallback: standard rectangle width based on label
+    const label = cell.attr?.("label/text") || "";
+    const width = Math.max(120, Math.min(500, estimateTextWidthPx(String(label))));
+    try {
+      cell.resize(width, 60);
+    } catch {}
+  }
+}
 
 export function createUmlNode(kind: NodeToolKind, graph: joint.dia.Graph, x: number, y: number) {
   const umlNs: any = (joint.shapes as any).uml;
@@ -16,6 +157,7 @@ export function createUmlNode(kind: NodeToolKind, graph: joint.dia.Graph, x: num
           methods: [],
         });
         el.addTo(graph);
+        autoResizeUmlCell(el);
         return;
       }
       if (kind === "uml-interface") {
@@ -27,6 +169,7 @@ export function createUmlNode(kind: NodeToolKind, graph: joint.dia.Graph, x: num
           methods: [],
         });
         el.addTo(graph);
+        autoResizeUmlCell(el);
         return;
       }
       if (kind === "uml-abstract") {
@@ -38,6 +181,7 @@ export function createUmlNode(kind: NodeToolKind, graph: joint.dia.Graph, x: num
           methods: [],
         });
         el.addTo(graph);
+        autoResizeUmlCell(el);
         return;
       }
     }
@@ -47,6 +191,7 @@ export function createUmlNode(kind: NodeToolKind, graph: joint.dia.Graph, x: num
     rect.resize(160, 60);
     rect.attr({ body: { fill: "#fff" }, label: { text: kind.replace("uml-", "") } });
     rect.addTo(graph);
+    autoResizeUmlCell(rect);
   } catch (e) {
     console.error("createUmlNode error", e);
   }
@@ -62,24 +207,120 @@ export function createUmlLink(
   const umlNs: any = (joint.shapes as any).uml;
   try {
     let link: any;
+    
+    // Configuración común para todas las conexiones
+    const defaultLinkOptions: any = {
+      // Asegurar que la conexión se dibuje por encima de los nodos
+      z: 10,
+      // Ajustar el punto de conexión para que no se superponga con el borde del nodo
+      connector: { name: 'rounded' },
+      router: { name: 'manhattan' },
+      // Ajustar la distancia de las etiquetas desde los nodos
+      defaultLabel: {
+        markup: [
+          { tagName: 'rect', selector: 'body' },
+          { tagName: 'text', selector: 'label' }
+        ],
+        attrs: {
+          text: {
+            text: '',
+            'font-size': 12,
+            'text-anchor': 'middle',
+            'y-alignment': 'middle',
+            'fill': '#000000'
+          },
+          rect: {
+            fill: '#ffffff',
+            'fill-opacity': 0.9,
+            stroke: 'none',
+            'stroke-width': 0,
+            'ref-width': 1.2,
+            'ref-height': 1.4,
+            'ref-x': 0,
+            'ref-y': -10,
+            'x-alignment': 'middle',
+            'y-alignment': 'middle',
+            rx: 3,
+            ry: 3
+          }
+        },
+        position: {
+          distance: 0.5, // Posición a lo largo de la línea (0-1)
+          args: {
+            keepGradient: true,
+            ensureLegibility: true
+          }
+        }
+      }
+    };
+    
     if (umlNs) {
+      const baseOptions = {
+        source: { id: sourceId },
+        target: { id: targetId },
+        ...defaultLinkOptions
+      };
+      
       if (kind === "assoc") {
-        link = new umlNs.Association({ source: { id: sourceId }, target: { id: targetId } });
+        link = new umlNs.Association(baseOptions);
+      } else if (kind === "aggregation") {
+        link = new umlNs.Aggregation(baseOptions);
+      } else if (kind === "composition") {
+        link = new umlNs.Composition(baseOptions);
+      } else if (kind === "dependency") {
+        // JointJS UML has Dependency in some builds; if not, fallback below
+        if (umlNs.Dependency) {
+          link = new umlNs.Dependency(baseOptions);
+        }
       } else if (kind === "generalization") {
-        link = new umlNs.Generalization({ source: { id: sourceId }, target: { id: targetId } });
+        link = new umlNs.Generalization(baseOptions);
       }
     }
     if (!link) {
+      // Fallback styles approximating UML notations
+      const base: any = {
+        stroke: "#111827",
+        'stroke-width': 2
+      };
+      
+      // Ajustar marcadores para que no se superpongan con los nodos
+      let targetMarker: any = { 
+        type: "path", 
+        d: "M 10 -5 0 0 10 5 z", 
+        fill: "#111827",
+        'stroke': 'none',
+        'stroke-width': 0
+      };
+      
+      let sourceMarker: any | undefined;
+      let strokeDasharray: string | undefined;
+      if (kind === "generalization") {
+        targetMarker = { type: "path", d: "M 20 0 L 0 10 L 20 20 z", fill: "#fff", stroke: "#111827" };
+      } else if (kind === "aggregation") {
+        // hollow diamond at source
+        sourceMarker = { type: "path", d: "M 20 0 L 10 10 L 0 0 L 10 -10 z", fill: "#fff", stroke: "#111827" };
+      } else if (kind === "composition") {
+        // filled diamond at source
+        sourceMarker = { type: "path", d: "M 20 0 L 10 10 L 0 0 L 10 -10 z", fill: "#111827", stroke: "#111827" };
+      } else if (kind === "dependency") {
+        // dashed line with open arrow
+        strokeDasharray = "5,5";
+        targetMarker = { type: "path", d: "M 10 -5 0 0 10 5 z", fill: "#111827" };
+      }
+
+      // Crear el enlace con las opciones base y los estilos personalizados
       link = new joint.dia.Link({
+        ...defaultLinkOptions,
         source: { id: sourceId },
         target: { id: targetId },
         attrs: {
           line: {
-            stroke: "#111827",
-            targetMarker:
-              kind === "generalization"
-                ? { type: "path", d: "M 20 0 L 0 10 L 20 20 z", fill: "#fff", stroke: "#111827" }
-                : { type: "path", d: "M 10 -5 0 0 10 5 z", fill: "#111827" },
+            ...base,
+            'stroke-linecap': 'round',
+            'stroke-linejoin': 'round',
+            targetMarker,
+            sourceMarker,
+            strokeDasharray,
           },
         },
       });
@@ -128,7 +369,10 @@ export function applyClassDataToCell(cell: any, data: Partial<BasicClassData>) {
     if (data.name !== undefined) cell.set("name", data.name);
     if (data.attributes !== undefined) cell.set("attributes", data.attributes);
     if (data.methods !== undefined) cell.set("methods", data.methods);
+    // Auto-resize after applying updates
+    autoResizeUmlCell(cell);
   } else {
     if (data.name !== undefined) cell.attr("label/text", data.name);
+    autoResizeUmlCell(cell);
   }
 }
