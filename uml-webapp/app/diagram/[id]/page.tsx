@@ -46,6 +46,10 @@ export default function DiagramByIdPage() {
     y: 0,
     cellId: null,
   });
+  
+  // Estados para el desplazamiento con el cursor
+  const [isPanning, setIsPanning] = useState(false);
+  const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
 
   // Delete handler available to UI and keyboard
   const handleDeleteSelected = useCallback(() => {
@@ -92,11 +96,12 @@ export default function DiagramByIdPage() {
     if (!canvasRef.current) return;
 
     const graph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
+    // Configuración del papel con un área de dibujo más grande
     const paper = new joint.dia.Paper({
       el: canvasRef.current,
       model: graph,
-      width: "100%",
-      height: "100%",
+      width: 3000,  // Tamaño inicial grande para permitir el desplazamiento
+      height: 2000, // Tamaño inicial grande para permitir el desplazamiento
       gridSize: 1,
       drawGrid: { name: "dot", args: { color: "#e0e0e0" } },
       background: { color: "#f8fafc" },
@@ -106,7 +111,6 @@ export default function DiagramByIdPage() {
       defaultConnectionArgs: { attrs: { line: { stroke: "#64748b", strokeWidth: 2 } } },
       snapLinks: { radius: 75 },
       linkPinning: false,
-      // Habilitar interacciones táctiles y de ratón
       interactive: true,
       // Habilitar el zoom con la rueda del ratón
       mousewheel: {
@@ -115,9 +119,16 @@ export default function DiagramByIdPage() {
         minScale: 0.1,
         maxScale: 4,
       },
+      // Mejorar el rendimiento con áreas grandes
+      async: true,
+      frozen: false,
+      sorting: joint.dia.Paper.sorting.APPROX,
       // Configuración del zoom con gestos
-      guard: () => false, // Evita la selección de texto al hacer zoom
+      guard: () => false,
     });
+    
+    // Ajustar el viewport inicial al centro del área de dibujo
+    paper.translate(paper.options.width / 4, paper.options.height / 4);
 
     graphRef.current = graph;
     paperRef.current = paper;
@@ -137,15 +148,24 @@ export default function DiagramByIdPage() {
 
     const pAny: any = paper;
     // Add node on blank click if a node tool is active
-    const onBlankPointerDown = (_evt: any, x: number, y: number) => {
+    const onBlankPointerDown = (evt: any, x: number, y: number) => {
       const currentTool = toolRef.current;
+      
+      // Si es clic derecho o botón del medio, no hacer nada
+      if (evt?.button === 2 || evt?.button === 1) return;
+      
+      // Si es una herramienta de nodo y no hay arrastre, crear el nodo
       if (currentTool === "uml-class" || currentTool === "uml-interface" || currentTool === "uml-abstract") {
+        // Verificar si hay un arrastre significativo para evitar crear nodos por clics accidentales
+        if (evt?.data?.startedWithRightClick) return;
         createUmlNode(currentTool, x, y);
         return;
       }
+      
       if (currentTool === "select") {
         setSelected(null);
       }
+      
       // Cancel pending link if any
       if (linkSourceRef.current) {
         setLinkSourceId(null);
@@ -155,20 +175,29 @@ export default function DiagramByIdPage() {
     // Link creation via two clicks on cells
     const onCellPointerDown = (cellView: any, evt?: MouseEvent, ex?: number, ey?: number) => {
       const currentTool = toolRef.current;
-      if (currentTool === "assoc" || currentTool === "generalization" || currentTool === "aggregation" || currentTool === "composition" || currentTool === "dependency") {
+      
+      // Si es clic derecho o botón del medio, no hacer nada
+      if (evt && (evt.button === 2 || evt.button === 1)) return;
+      
+      if (currentTool === "assoc" || currentTool === "generalization" || 
+          currentTool === "aggregation" || currentTool === "composition" || 
+          currentTool === "dependency") {
+        
         const model = cellView?.model;
         const isLink = model?.isLink?.() || model?.get?.("type")?.includes("Link");
+        
+        // Si se hace clic en un enlace, no hacer nada
         if (isLink) {
-          // Ignore links as endpoints; show a short hint
-          setBannerMsg("Haz clic sobre un nodo (no un enlace)");
-          setTimeout(() => setBannerMsg((m) => (m === "Haz clic sobre un nodo (no un enlace)" ? null : m)), 1200);
           return;
         }
+        
         const id = model?.id;
         if (!id) return;
+        
         if (!linkSourceRef.current) {
+          // Primer clic - establecer origen
           setLinkSourceId(id);
-          // Compute anchor position in canvas coords for visual hint
+          // Calcular posición para el indicador visual
           const container = containerRef.current;
           if (container) {
             const rect = container.getBoundingClientRect();
@@ -177,9 +206,12 @@ export default function DiagramByIdPage() {
             setPendingLinkAnchor({ x: cx, y: cy });
           }
         } else {
-          const sourceId = linkSourceRef.current!;
+          // Segundo clic - crear enlace si no es el mismo nodo
+          const sourceId = linkSourceRef.current;
+          if (sourceId !== id) {
+            createLink(currentTool, sourceId, id);
+          }
           setLinkSourceId(null);
-          createLink(currentTool, sourceId, id);
           setPendingLinkAnchor(null);
         }
         return;
@@ -387,6 +419,69 @@ export default function DiagramByIdPage() {
     return () => clearInterval(timer);
   }, []);
 
+  // Manejadores para el desplazamiento con el cursor
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    // Solo activar el desplazamiento con el botón del medio o con botón derecho + Ctrl
+    if ((e.button === 1 || (e.button === 2 && e.ctrlKey)) && tool === "select") {
+      setIsPanning(true);
+      setLastPos({ x: e.clientX, y: e.clientY });
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [tool]);
+
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (isPanning && paperRef.current) {
+      const scale = paperRef.current.scale().sx || 1;
+      const dx = (e.clientX - lastPos.x) / scale;
+      const dy = (e.clientY - lastPos.y) / scale;
+      
+      // Mover la vista del papel
+      paperRef.current.translate(dx, dy);
+      setLastPos({ x: e.clientX, y: e.clientY });
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [isPanning, lastPos]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsPanning(false);
+  }, []);
+
+  // Efecto para manejar los eventos de desplazamiento
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container) return;
+    
+    // Manejador para prevenir el menú contextual
+    const preventContextMenu = (e: Event) => {
+      if (tool === "select") {
+        e.preventDefault();
+      }
+    };
+    
+    // Agregar manejadores para el contenedor
+    container.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    // Agregar manejador de menú contextual
+    if (canvas) {
+      canvas.addEventListener('contextmenu', preventContextMenu);
+    }
+    
+    // Limpieza
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      if (canvas) {
+        canvas.removeEventListener('contextmenu', preventContextMenu);
+      }
+    };
+  }, [handleMouseDown, handleMouseMove, handleMouseUp, tool]);
+
   // Drag-and-drop from toolbox to canvas
   useEffect(() => {
     const container = containerRef.current;
@@ -432,7 +527,9 @@ export default function DiagramByIdPage() {
     canvas?.addEventListener("dragenter", onDragEnter as any);
     canvas?.addEventListener("dragover", onDragOver as any);
     canvas?.addEventListener("drop", onDrop as any);
+
     return () => {
+      // Limpiar manejadores de eventos de arrastre
       container.removeEventListener("dragenter", onDragEnter as any);
       container.removeEventListener("dragover", onDragOver as any);
       container.removeEventListener("drop", onDrop as any);
@@ -444,7 +541,11 @@ export default function DiagramByIdPage() {
 
   function colorForClient(id: string) {
     let hash = 0;
-    for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) | 0;
+    for (let i = 0; i < id.length; i++) {
+      const char = id.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
     const hue = Math.abs(hash) % 360;
     return `hsl(${hue} 80% 60%)`;
   }
@@ -519,8 +620,28 @@ export default function DiagramByIdPage() {
           onSelectTool={(t) => { setTool(t); setLinkSourceId(null); setPendingLinkAnchor(null); }}
         />
         {/* Canvas + presence overlay */}
-        <div className="flex-1 relative" ref={containerRef}>
-          <div ref={canvasRef} className="w-full h-full" />
+        <div 
+          className="flex-1 relative" 
+          ref={containerRef} 
+          style={{ 
+            overflow: 'auto',
+            width: '100%',
+            height: '100%',
+            position: 'relative'
+          }}
+        >
+          <div 
+            ref={canvasRef}
+            style={{ 
+              cursor: isPanning ? 'grabbing' : 'default',
+              userSelect: 'none',
+              touchAction: 'none',
+              position: 'absolute',
+              minWidth: '3000px',
+              minHeight: '2000px',
+              transformOrigin: '0 0'
+            }}
+          />
           {/* Controles de zoom */}
           <ZoomControls paper={paperRef.current} className="absolute bottom-4 right-4" />
           {/* Pending link hint */}
