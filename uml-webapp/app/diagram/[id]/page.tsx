@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { Toolbox } from "../../../components/Toolbox";
 import { Inspector, type ClassData } from "../../../components/Inspector";
 import { LinkInspector } from "../../../components/LinkInspector";
 import { ZoomControls } from "../../../components/ZoomControls";
 import { Chatbot, DiagramSuggestionCard } from "../../../components/Chatbot";
+import { SpringCodeGeneratorComponent } from "../../../components/SpringCodeGenerator";
 import { applyClassDataToCell, applyLinkDataToCell } from "../../../lib/umlTools";
 import * as joint from "jointjs";
 import "jointjs/dist/joint.css";
@@ -61,6 +62,9 @@ export default function DiagramByIdPage() {
     chatSuggestions,
     setChatSuggestions,
   } = useChatbotState();
+
+  // Estado para el generador de código Spring
+  const [showSpringGenerator, setShowSpringGenerator] = useState(false);
 
   // Hooks para navegación
   const {
@@ -148,104 +152,94 @@ export default function DiagramByIdPage() {
 
 
   return (
-    <div className="w-screen h-screen flex flex-col">
-      <div className="p-3 border-b flex items-center gap-3 justify-between">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">UML Diagram (ID: {diagramId})</h1>
-          <span className="text-sm text-gray-500">Colaboración en tiempo real</span>
-          <span className="ml-2 text-xs rounded-full border px-2 py-0.5 text-gray-700 bg-gray-50">
-            {tool === "select" && "Herramienta: Selección (arrastrar fondo para mover, rueda para zoom, flechas para navegar)"}
-            {tool === "uml-class" && "Herramienta: Clase (clic en la pizarra o arrastre)"}
-            {tool === "uml-interface" && "Herramienta: Interfaz (clic en la pizarra o arrastre)"}
-            {tool === "uml-abstract" && "Herramienta: Abstracta (clic en la pizarra o arrastre)"}
-            {tool === "uml-enum" && "Herramienta: Enumeración (clic en la pizarra o arrastre)"}
-            {tool === "uml-package" && "Herramienta: Paquete (clic en la pizarra o arrastre)"}
-            {tool === "assoc" && "Herramienta: Asociación (clic origen y luego destino)"}
-            {tool === "aggregation" && "Herramienta: Agregación (clic origen y luego destino)"}
-            {tool === "composition" && "Herramienta: Composición (clic origen y luego destino)"}
-            {tool === "dependency" && "Herramienta: Dependencia (clic origen y luego destino)"}
-            {tool === "generalization" && "Herramienta: Generalización (clic origen y luego destino)"}
-          </span>
+    <div className="w-screen h-screen flex flex-col bg-gray-50">
+      {/* Header minimalista */}
+      <header className="px-6 py-4 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <h1 className="text-xl font-medium text-gray-900">UML Diagram</h1>
+            <span className="text-sm text-gray-500 font-mono">#{diagramId}</span>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              <span className="text-xs text-gray-500">En línea</span>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowChatbot(true)}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              Asistente IA
+            </button>
+            <button
+              onClick={() => setShowSpringGenerator(true)}
+              className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              Generar Código
+            </button>
+            <button
+              onClick={copyLink}
+              className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              {copied ? "Copiado" : "Enlace"}
+            </button>
+            <button
+              onClick={handleDeleteSelected}
+              disabled={!selected && !linkSelected}
+              className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                selected || linkSelected 
+                  ? "text-red-700 bg-red-50 border border-red-200 hover:bg-red-100" 
+                  : "text-gray-400 bg-gray-100 border border-gray-200 cursor-not-allowed"
+              }`}
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Eliminar
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowChatbot(true)}
-            className="inline-flex items-center justify-center rounded-md bg-green-600 text-white px-4 py-1.5 text-sm hover:bg-green-700"
-          >
-            🤖 Asistente IA
-          </button>
-          <button
-            onClick={() => {
-              // Prueba específica del chatbot con el caso que está fallando
-              const testMessage = "Crea un sistema de gestión de alumnos con las clases Alumno, Asignatura, Nota y Profesor";
-              console.log('Enviando mensaje de prueba:', testMessage);
-              
-              // Simular la respuesta del chatbot
-              fetch('/api/chatbot', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: testMessage, history: [] }),
-              })
-              .then(response => response.json())
-              .then(data => {
-                console.log('Respuesta del chatbot:', data);
-                if (data.suggestions && data.suggestions.length > 0) {
-                  console.log('Aplicando sugerencias:', data.suggestions);
-                  data.suggestions.forEach((suggestion: any) => {
-                    handleApplySuggestion(suggestion);
-                  });
-                } else {
-                  console.log('No se encontraron sugerencias en la respuesta');
-                  console.log('Mensaje completo:', data.message);
-                }
-              })
-              .catch(error => {
-                console.error('Error al probar chatbot:', error);
-              });
-            }}
-            className="inline-flex items-center justify-center rounded-md bg-purple-600 text-white px-3 py-1.5 text-sm hover:bg-purple-700"
-          >
-            🧪 Prueba Chatbot
-          </button>
-          <button
-            onClick={copyLink}
-            className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            {copied ? "Enlace copiado" : "Copiar enlace"}
-          </button>
-          <button
-            onClick={() => copyId(diagramId)}
-            className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
-          >
-            {copiedId ? "ID copiado" : "Copiar ID"}
-          </button>
-          <button
-            onClick={handleDeleteSelected}
-            disabled={!selected && !linkSelected}
-            className={`inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm ${selected || linkSelected ? "hover:bg-red-50" : "opacity-50 cursor-not-allowed"}`}
-            title={selected || linkSelected ? "Eliminar elemento seleccionado (Supr/Backspace)" : "No hay selección"}
-          >
-            Eliminar seleccionado
-          </button>
+        {/* Tool indicator */}
+        <div className="mt-3 text-xs text-gray-500">
+          {tool === "select" && "Selección • Arrastra para mover, rueda para zoom"}
+          {tool === "uml-class" && "Clase • Clic en el canvas para crear"}
+          {tool === "uml-interface" && "Interfaz • Clic en el canvas para crear"}
+          {tool === "uml-abstract" && "Clase Abstracta • Clic en el canvas para crear"}
+          {tool === "uml-enum" && "Enumeración • Clic en el canvas para crear"}
+          {tool === "uml-package" && "Paquete • Clic en el canvas para crear"}
+          {tool === "assoc" && "Asociación • Clic origen y destino"}
+          {tool === "aggregation" && "Agregación • Clic origen y destino"}
+          {tool === "composition" && "Composición • Clic origen y destino"}
+          {tool === "dependency" && "Dependencia • Clic origen y destino"}
+          {tool === "generalization" && "Generalización • Clic origen y destino"}
         </div>
-      </div>
-      <div className="flex-1 flex min-h-0">
-        {/* Toolbox */}
+      </header>
+      <div className="flex-1 flex min-h-0 bg-white">
+        {/* Toolbox minimalista */}
         <Toolbox
           tool={tool}
           linkSourceId={linkSourceId}
           onSelectTool={(t) => { setTool(t); setLinkSourceId(null); setPendingLinkAnchor(null); }}
         />
-        {/* Canvas + presence overlay */}
+        {/* Canvas principal */}
         <div 
-          className="flex-1 relative" 
+          className="flex-1 relative bg-gray-50" 
           ref={containerRef} 
           style={{ 
-            overflow: 'hidden', // Eliminar barras de desplazamiento
+            overflow: 'hidden',
             width: '100%',
             height: '100%',
             position: 'relative',
-            cursor: isPanning ? 'grabbing' : 'grab' // Cambiar cursor para indicar que se puede arrastrar
+            cursor: isPanning ? 'grabbing' : 'grab'
           }}
         >
           <div 
@@ -260,33 +254,34 @@ export default function DiagramByIdPage() {
               transformOrigin: '0 0'
             }}
           />
-          {/* Controles de zoom */}
-          <ZoomControls paper={paperRef.current} className="absolute bottom-4 right-4" />
-          {/* Pending link hint */}
+          {/* Controles de zoom minimalistas */}
+          <ZoomControls paper={paperRef.current} className="absolute bottom-6 right-6" />
+          
+          {/* Pending link hint minimalista */}
           {linkSourceId && (
             <>
-              <div className="absolute top-2 left-1/2 -translate-x-1/2 z-40 rounded-md border bg-white px-3 py-1 text-xs shadow">
-                Seleccione el destino…
+              <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 rounded-lg bg-white border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 shadow-lg">
+                Selecciona el destino
               </div>
               {pendingLinkAnchor && (
                 <div
-                  className="absolute z-40 w-3 h-3 rounded-full ring-2 ring-white shadow"
-                  style={{ left: pendingLinkAnchor.x, top: pendingLinkAnchor.y, transform: "translate(-50%, -50%)", backgroundColor: "#2563eb" }}
+                  className="absolute z-40 w-3 h-3 rounded-full ring-2 ring-white shadow-lg"
+                  style={{ left: pendingLinkAnchor.x, top: pendingLinkAnchor.y, transform: "translate(-50%, -50%)", backgroundColor: "#3b82f6" }}
                   title="Origen"
                 />
               )}
             </>
           )}
-          {/* Custom context menu */}
+          {/* Context menu minimalista */}
           {ctxMenu.visible && (
             <div
-              className="absolute z-50 bg-white border rounded-md shadow text-sm select-none"
+              className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-xl text-sm select-none min-w-[120px]"
               style={{ left: ctxMenu.x, top: ctxMenu.y }}
               onClick={(e) => e.stopPropagation()}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
             >
               <button
-                className="block w-full text-left px-3 py-2 hover:bg-red-50"
+                className="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50 transition-colors flex items-center"
                 onClick={() => {
                   const id = ctxMenu.cellId;
                   if (id) {
@@ -299,6 +294,9 @@ export default function DiagramByIdPage() {
                   setCtxMenu((m) => ({ ...m, visible: false }));
                 }}
               >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
                 Eliminar
               </button>
             </div>
@@ -370,6 +368,14 @@ export default function DiagramByIdPage() {
           onApplyAllSuggestions={handleApplyAllSuggestions}
           onClose={() => setShowChatbot(false)}
           onResponse={handleChatResponse}
+        />
+      )}
+
+      {/* Spring Code Generator Modal */}
+      {showSpringGenerator && graphRef.current && (
+        <SpringCodeGeneratorComponent
+          graph={graphRef.current}
+          onClose={() => setShowSpringGenerator(false)}
         />
       )}
 
