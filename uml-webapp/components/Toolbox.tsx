@@ -7,6 +7,8 @@ export type Tool =
   | "uml-class"
   | "uml-interface"
   | "uml-abstract"
+  | "uml-enum"
+  | "uml-package"
   | "assoc"
   | "aggregation"
   | "composition"
@@ -71,6 +73,32 @@ export function Toolbox({
           }}
         >
           Abstracta
+        </button>
+        <button
+          className={`text-left rounded-md border px-3 py-2 text-sm hover:bg-gray-50 ${tool === "uml-enum" ? "bg-gray-100" : ""}`}
+          onClick={() => onSelectTool("uml-enum")}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "copyMove";
+            e.dataTransfer.setData("text/uml-tool", "uml-enum");
+            try { e.dataTransfer.setData("text/plain", "uml-enum"); } catch {}
+            try { e.dataTransfer.dropEffect = "copy"; } catch {}
+          }}
+        >
+          Enumeración
+        </button>
+        <button
+          className={`text-left rounded-md border px-3 py-2 text-sm hover:bg-gray-50 ${tool === "uml-package" ? "bg-gray-100" : ""}`}
+          onClick={() => onSelectTool("uml-package")}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "copyMove";
+            e.dataTransfer.setData("text/uml-tool", "uml-package");
+            try { e.dataTransfer.setData("text/plain", "uml-package"); } catch {}
+            try { e.dataTransfer.dropEffect = "copy"; } catch {}
+          }}
+        >
+          Paquete
         </button>
         <div className="h-px bg-gray-200 my-1" />
         <button

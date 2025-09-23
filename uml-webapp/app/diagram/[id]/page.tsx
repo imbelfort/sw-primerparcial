@@ -1,575 +1,151 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { useParams } from "next/navigation";
-import { Toolbox, type Tool } from "../../../components/Toolbox";
+import { Toolbox } from "../../../components/Toolbox";
 import { Inspector, type ClassData } from "../../../components/Inspector";
 import { LinkInspector } from "../../../components/LinkInspector";
 import { ZoomControls } from "../../../components/ZoomControls";
-import {
-  createUmlNode as createUmlNodeLib,
-  createUmlLink as createUmlLinkLib,
-  getClassDataFromCell,
-  applyClassDataToCell,
-  getLinkDataFromCell,
-  applyLinkDataToCell,
-} from "../../../lib/umlTools";
-import io, { Socket } from "socket.io-client";
+import { Chatbot, DiagramSuggestionCard } from "../../../components/Chatbot";
+import { applyClassDataToCell, applyLinkDataToCell } from "../../../lib/umlTools";
 import * as joint from "jointjs";
 import "jointjs/dist/joint.css";
+
+// Importar todos los hooks personalizados
+import {
+  useDiagramState,
+  useJointJS,
+  useCanvasNavigation,
+  useChatbotLogic,
+  useSocketIO,
+  useDragAndDrop,
+  useDeletion,
+  useCursorCleanup,
+  useClipboard,
+  useChatbotState,
+  useNavigationState,
+  useCollaborationState,
+} from "../../../src/hooks";
 
 export default function DiagramByIdPage() {
   const params = useParams<{ id: string }>();
   const diagramId = params?.id as string;
 
+  // Refs para elementos DOM
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const graphRef = useRef<joint.dia.Graph | null>(null);
-  const paperRef = useRef<joint.dia.Paper | null>(null);
-  const socketRef = useRef<Socket | null>(null);
   const suppressRemoteRef = useRef(false);
-  const [peerCursors, setPeerCursors] = useState<Record<string, { xPct: number; yPct: number; color: string; ts: number }>>({});
-  const [tool, setTool] = useState<Tool>("select");
-  const [linkSourceId, setLinkSourceId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<ClassData | null>(null);
-  const [linkSelected, setLinkSelected] = useState<ReturnType<typeof getLinkDataFromCell> | null>(null);
-  // Refs to avoid stale closures inside JointJS event handlers
-  const toolRef = useRef<Tool>("select");
-  useEffect(() => { toolRef.current = tool; }, [tool]);
-  const linkSourceRef = useRef<string | null>(null);
-  useEffect(() => { linkSourceRef.current = linkSourceId; }, [linkSourceId]);
-  const [pendingLinkAnchor, setPendingLinkAnchor] = useState<{ x: number; y: number } | null>(null);
-  const [bannerMsg, setBannerMsg] = useState<string | null>(null);
-  const [ctxMenu, setCtxMenu] = useState<{ visible: boolean; x: number; y: number; cellId: string | null }>({
-    visible: false,
-    x: 0,
-    y: 0,
-    cellId: null,
-  });
-  
-  // Estados para el desplazamiento con el cursor
-  const [isPanning, setIsPanning] = useState(false);
-  const [lastPos, setLastPos] = useState({ x: 0, y: 0 });
 
-  // Delete handler available to UI and keyboard
-  const handleDeleteSelected = useCallback(() => {
-    // Delete node
-    if (selected) {
-      const cell = graphRef.current?.getCell(selected.id) as any;
-      if (cell && typeof cell.remove === "function") {
-        cell.remove();
-        setSelected(null);
-      }
-      return;
-    }
-    // Delete link
-    if (linkSelected) {
-      const cell = graphRef.current?.getCell(linkSelected.id) as any;
-      if (cell && typeof cell.remove === "function") {
-        cell.remove();
-        setLinkSelected(null);
-      }
-      return;
-    }
-  }, [selected?.id]);
+  // Hooks personalizados para el estado del diagrama
+  const {
+    tool,
+    setTool,
+    linkSourceId,
+    setLinkSourceId,
+    selected,
+    setSelected,
+    linkSelected,
+    setLinkSelected,
+    pendingLinkAnchor,
+    setPendingLinkAnchor,
+    ctxMenu,
+    setCtxMenu,
+    toolRef,
+    linkSourceRef,
+  } = useDiagramState();
 
-  // Keyboard delete support (Delete / Backspace outside inputs)
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!selected) return;
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      const isEditable = el?.isContentEditable;
-      const typing = tag === "INPUT" || tag === "TEXTAREA" || isEditable;
-      if (typing) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        handleDeleteSelected();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selected?.id, handleDeleteSelected]);
+  // Hooks para el chatbot
+  const {
+    showChatbot,
+    setShowChatbot,
+    chatSuggestions,
+    setChatSuggestions,
+  } = useChatbotState();
 
-  // Init JointJS
-  useEffect(() => {
-    if (!canvasRef.current) return;
+  // Hooks para navegación
+  const {
+    isPanning,
+    setIsPanning,
+    lastPos,
+    setLastPos,
+  } = useNavigationState();
 
-    const graph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
-    // Configuración del papel con un área de dibujo más grande
-    const paper = new joint.dia.Paper({
-      el: canvasRef.current,
-      model: graph,
-      width: 3000,  // Tamaño inicial grande para permitir el desplazamiento
-      height: 2000, // Tamaño inicial grande para permitir el desplazamiento
-      gridSize: 1,
-      drawGrid: { name: "dot", args: { color: "#e0e0e0" } },
-      background: { color: "#f8fafc" },
-      cellViewNamespace: joint.shapes,
-      defaultConnectionPoint: { name: "boundary", args: { sticky: true } },
-      defaultConnector: { name: "rounded" },
-      defaultConnectionArgs: { attrs: { line: { stroke: "#64748b", strokeWidth: 2 } } },
-      snapLinks: { radius: 75 },
-      linkPinning: false,
-      interactive: true,
-      // Habilitar el zoom con la rueda del ratón
-      mousewheel: {
-        enabled: true,
-        modifiers: ['ctrl', 'meta'],
-        minScale: 0.1,
-        maxScale: 4,
-      },
-      // Mejorar el rendimiento con áreas grandes
-      async: true,
-      frozen: false,
-      sorting: joint.dia.Paper.sorting.APPROX,
-      // Configuración del zoom con gestos
-      guard: () => false,
-    });
-    
-    // Ajustar el viewport inicial al centro del área de dibujo
-    paper.translate(paper.options.width / 4, paper.options.height / 4);
+  // Hooks para colaboración
+  const {
+    peerCursors,
+    setPeerCursors,
+  } = useCollaborationState();
 
-    graphRef.current = graph;
-    paperRef.current = paper;
+  // Hooks para UI
+  const {
+    copied,
+    copiedId,
+    copyLink,
+    copyId,
+  } = useClipboard();
 
-    // Toolbox interactions using helpers
-    const createUmlNode = (kind: string, x: number, y: number) => {
-      const g = graphRef.current;
-      if (!g) return;
-      createUmlNodeLib(kind as any, g, x, y);
-    };
+  // Inicializar JointJS
+  const { graphRef, paperRef } = useJointJS(
+    canvasRef,
+    containerRef,
+    tool,
+    toolRef,
+    linkSourceId,
+    linkSourceRef,
+    setSelected,
+    setLinkSelected,
+    setLinkSourceId,
+    setPendingLinkAnchor,
+    setCtxMenu
+  );
 
-    const createLink = (kind: string, sourceId: string, targetId: string) => {
-      const g = graphRef.current;
-      if (!g) return;
-      createUmlLinkLib(kind as any, g, sourceId, targetId);
-    };
+  // Lógica de navegación del canvas
+  useCanvasNavigation(
+    containerRef,
+    canvasRef,
+    paperRef,
+    tool,
+    isPanning,
+    setIsPanning,
+    lastPos,
+    setLastPos
+  );
 
-    const pAny: any = paper;
-    // Add node on blank click if a node tool is active
-    const onBlankPointerDown = (evt: any, x: number, y: number) => {
-      const currentTool = toolRef.current;
-      
-      // Si es clic derecho o botón del medio, no hacer nada
-      if (evt?.button === 2 || evt?.button === 1) return;
-      
-      // Si es una herramienta de nodo y no hay arrastre, crear el nodo
-      if (currentTool === "uml-class" || currentTool === "uml-interface" || currentTool === "uml-abstract") {
-        // Verificar si hay un arrastre significativo para evitar crear nodos por clics accidentales
-        if (evt?.data?.startedWithRightClick) return;
-        createUmlNode(currentTool, x, y);
-        return;
-      }
-      
-      if (currentTool === "select") {
-        setSelected(null);
-      }
-      
-      // Cancel pending link if any
-      if (linkSourceRef.current) {
-        setLinkSourceId(null);
-        setPendingLinkAnchor(null);
-      }
-    };
-    // Link creation via two clicks on cells
-    const onCellPointerDown = (cellView: any, evt?: MouseEvent, ex?: number, ey?: number) => {
-      const currentTool = toolRef.current;
-      
-      // Si es clic derecho o botón del medio, no hacer nada
-      if (evt && (evt.button === 2 || evt.button === 1)) return;
-      
-      if (currentTool === "assoc" || currentTool === "generalization" || 
-          currentTool === "aggregation" || currentTool === "composition" || 
-          currentTool === "dependency") {
-        
-        const model = cellView?.model;
-        const isLink = model?.isLink?.() || model?.get?.("type")?.includes("Link");
-        
-        // Si se hace clic en un enlace, no hacer nada
-        if (isLink) {
-          return;
-        }
-        
-        const id = model?.id;
-        if (!id) return;
-        
-        if (!linkSourceRef.current) {
-          // Primer clic - establecer origen
-          setLinkSourceId(id);
-          // Calcular posición para el indicador visual
-          const container = containerRef.current;
-          if (container) {
-            const rect = container.getBoundingClientRect();
-            const cx = typeof ex === "number" ? ex : (evt ? evt.clientX - rect.left : rect.width / 2);
-            const cy = typeof ey === "number" ? ey : (evt ? evt.clientY - rect.top : rect.height / 2);
-            setPendingLinkAnchor({ x: cx, y: cy });
-          }
-        } else {
-          // Segundo clic - crear enlace si no es el mismo nodo
-          const sourceId = linkSourceRef.current;
-          if (sourceId !== id) {
-            createLink(currentTool, sourceId, id);
-          }
-          setLinkSourceId(null);
-          setPendingLinkAnchor(null);
-        }
-        return;
-      }
-      if (currentTool === "select") {
-        const model = cellView?.model;
-        if (!model) return;
-        const isLink = model.isLink?.() || model.get?.("type")?.includes("Link");
-        if (isLink) {
-          const ld = getLinkDataFromCell(model);
-          setLinkSelected(ld);
-          setSelected(null);
-          return;
-        }
-        const data = getClassDataFromCell(model);
-        if (data) {
-          setSelected({
-            id: data.id,
-            kind: data.kind,
-            name: data.name,
-            attributes: data.attributes,
-            methods: data.methods,
-          });
-          setLinkSelected(null);
-        }
-      }
-    };
-    pAny.on("blank:pointerdown", onBlankPointerDown);
-    pAny.on("cell:pointerdown", onCellPointerDown);
-    // Context menu for delete on nodes and links
-    const onCellContextMenu = (cellView: any, evt: MouseEvent) => {
-      evt.preventDefault();
-      const container = containerRef.current;
-      if (!container) return;
-      const rect = container.getBoundingClientRect();
-      const id = cellView?.model?.id as string | undefined;
-      setCtxMenu({
-        visible: true,
-        x: Math.max(0, evt.clientX - rect.left),
-        y: Math.max(0, evt.clientY - rect.top),
-        cellId: id ?? null,
-      });
-    };
-    const onBlankContextMenu = (evt: MouseEvent) => {
-      // Hide menu on blank right-click
-      evt.preventDefault();
-      setCtxMenu((m) => ({ ...m, visible: false }));
-    };
-    pAny.on("cell:contextmenu", onCellContextMenu);
-    pAny.on("blank:contextmenu", onBlankContextMenu);
+  // Lógica del chatbot
+  const { handleApplySuggestion, handleApplyAllSuggestions, handleChatResponse } = useChatbotLogic(
+    graphRef,
+    setChatSuggestions
+  );
 
-    // Add a demo class element if empty
-    if (graph.getCells().length === 0) {
-      const rect = new joint.shapes.standard.Rectangle();
-      rect.position(100, 60);
-      rect.resize(160, 60);
-      rect.attr({
-        body: { fill: "#EFF6FF", stroke: "#3B82F6" },
-        label: { text: "Clase", fill: "#111827" },
-      });
-      rect.addTo(graph);
-    }
+  // Socket.IO para colaboración en tiempo real
+  useSocketIO(
+    diagramId,
+    graphRef,
+    suppressRemoteRef,
+    setPeerCursors,
+    containerRef
+  );
 
-    return () => {
-      const anyPaper = paper as any;
-      if (typeof anyPaper?.remove === "function") {
-        anyPaper.remove();
-      } else {
-        anyPaper?.el?.remove?.();
-      }
-      graph.clear();
-      graphRef.current = null;
-      paperRef.current = null;
-      pAny.off?.("blank:pointerdown", onBlankPointerDown);
-      pAny.off?.("cell:pointerdown", onCellPointerDown);
-      pAny.off?.("cell:contextmenu", onCellContextMenu);
-      pAny.off?.("blank:contextmenu", onBlankContextMenu);
-    };
-  }, []);
+  // Drag and drop
+  useDragAndDrop(containerRef, canvasRef, graphRef);
 
-  // Init Socket.IO and real-time sync
-  useEffect(() => {
-    if (!diagramId) return;
+  // Eliminación de elementos
+  const { handleDeleteSelected } = useDeletion(
+    graphRef,
+    selected,
+    linkSelected,
+    setSelected,
+    setLinkSelected
+  );
 
-    const socket = io("http://localhost:3001", {
-      // Allow default transport negotiation (polling -> websocket)
-      transports: ["polling", "websocket"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 3000,
-      timeout: 20000,
-    });
-    socketRef.current = socket;
+  // Limpieza de cursores obsoletos
+  useCursorCleanup(setPeerCursors);
 
-    socket.on("connect", () => {
-      socket.emit("room:join", { diagramId });
-    });
 
-    socket.on("connect_error", (err) => {
-      // Log and let automatic reconnection handle it
-      console.warn("Socket connect_error: ", err?.message || err);
-    });
 
-    // Receive remote graph state
-    socket.on("graph:state", (state: any) => {
-      if (!graphRef.current) return;
-      // Prevent feedback loop if we are applying our own change
-      if (state?.from === socket.id) return;
-      suppressRemoteRef.current = true;
-      try {
-        graphRef.current.fromJSON(state.json);
-      } finally {
-        // Small timeout to avoid immediate echo
-        setTimeout(() => {
-          suppressRemoteRef.current = false;
-        }, 50);
-      }
-    });
 
-    // Presence: other users' cursors
-    socket.on("cursor", ({ cursor, clientId }: { cursor: { xPct: number; yPct: number }; clientId: string }) => {
-      setPeerCursors((prev) => {
-        const color = prev[clientId]?.color || colorForClient(clientId);
-        return {
-          ...prev,
-          [clientId]: { xPct: cursor.xPct, yPct: cursor.yPct, color, ts: Date.now() },
-        };
-      });
-    });
 
-    return () => {
-      socket.disconnect();
-      socketRef.current = null;
-    };
-  }, [diagramId]);
 
-  // Broadcast local changes (throttled)
-  useEffect(() => {
-    if (!graphRef.current || !diagramId) return;
-
-    let timeout: any = null;
-    const handler = () => {
-      if (suppressRemoteRef.current) return;
-      if (timeout) clearTimeout(timeout);
-      timeout = setTimeout(() => {
-        const json = graphRef.current?.toJSON();
-        const clientId = socketRef.current?.id;
-        socketRef.current?.emit("graph:update", { diagramId, json, clientId });
-      }, 200);
-    };
-
-    // Subscribe to graph changes. JointJS Graph mixes in Backbone.Events at
-    // runtime; use optional chaining to avoid TS type issues.
-    (graphRef.current as any)?.on?.("change add remove", handler);
-
-    return () => {
-      // JointJS Graph inherits Backbone.Events at runtime, which provides `off`,
-      // but the TypeScript typings for Graph may not declare it. Cast to `any`
-      // and guard the call to avoid type errors while still unsubscribing.
-      (graphRef.current as any)?.off?.("change add remove", handler);
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [diagramId]);
-
-  // Throttled cursor emitter
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !diagramId) return;
-
-    let lastSent = 0;
-    const intervalMs = 50;
-    const onMove = (e: MouseEvent) => {
-      const now = Date.now();
-      if (now - lastSent < intervalMs) return;
-      lastSent = now;
-      const rect = container.getBoundingClientRect();
-      const xPct = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100));
-      const yPct = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100));
-      const clientId = socketRef.current?.id;
-      if (!clientId) return;
-      socketRef.current?.emit("cursor", { diagramId, cursor: { xPct, yPct }, clientId });
-    };
-
-    container.addEventListener("mousemove", onMove);
-    return () => container.removeEventListener("mousemove", onMove);
-  }, [diagramId]);
-
-  // Cleanup stale cursors
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const cutoff = Date.now() - 5000;
-      setPeerCursors((prev) => {
-        const next = { ...prev } as typeof prev;
-        let changed = false;
-        for (const [id, c] of Object.entries(prev)) {
-          if (c.ts < cutoff) {
-            delete next[id as keyof typeof next];
-            changed = true;
-          }
-        }
-        return changed ? next : prev;
-      });
-    }, 2000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Manejadores para el desplazamiento con el cursor
-  const handleMouseDown = useCallback((e: MouseEvent) => {
-    // Solo activar el desplazamiento con el botón del medio o con botón derecho + Ctrl
-    if ((e.button === 1 || (e.button === 2 && e.ctrlKey)) && tool === "select") {
-      setIsPanning(true);
-      setLastPos({ x: e.clientX, y: e.clientY });
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }, [tool]);
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (isPanning && paperRef.current) {
-      const scale = paperRef.current.scale().sx || 1;
-      const dx = (e.clientX - lastPos.x) / scale;
-      const dy = (e.clientY - lastPos.y) / scale;
-      
-      // Mover la vista del papel
-      paperRef.current.translate(dx, dy);
-      setLastPos({ x: e.clientX, y: e.clientY });
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  }, [isPanning, lastPos]);
-
-  const handleMouseUp = useCallback(() => {
-    setIsPanning(false);
-  }, []);
-
-  // Efecto para manejar los eventos de desplazamiento
-  useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container) return;
-    
-    // Manejador para prevenir el menú contextual
-    const preventContextMenu = (e: Event) => {
-      if (tool === "select") {
-        e.preventDefault();
-      }
-    };
-    
-    // Agregar manejadores para el contenedor
-    container.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    
-    // Agregar manejador de menú contextual
-    if (canvas) {
-      canvas.addEventListener('contextmenu', preventContextMenu);
-    }
-    
-    // Limpieza
-    return () => {
-      container.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      if (canvas) {
-        canvas.removeEventListener('contextmenu', preventContextMenu);
-      }
-    };
-  }, [handleMouseDown, handleMouseMove, handleMouseUp, tool]);
-
-  // Drag-and-drop from toolbox to canvas
-  useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container) return;
-
-    const allowIfUml = (e: DragEvent) => {
-      const isUml = e.dataTransfer?.types?.includes("text/uml-tool");
-      if (isUml) {
-        // Required in some browsers (Edge) to allow dropping
-        e.preventDefault();
-        e.stopPropagation();
-        try {
-          if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-        } catch {}
-      }
-      return Boolean(isUml);
-    };
-
-    const onDragEnter = (e: DragEvent) => {
-      allowIfUml(e);
-    };
-    const onDragOver = (e: DragEvent) => {
-      allowIfUml(e);
-    };
-    const onDrop = (e: DragEvent) => {
-      const kind = e.dataTransfer?.getData("text/uml-tool") || e.dataTransfer?.getData("text/plain");
-      if (!kind) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const rect = container.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const g = graphRef.current;
-      if (!g) return;
-      createUmlNodeLib(kind as any, g, x, y);
-    };
-
-    // Attach to both container and canvas (some browsers fire on the top-most element)
-    container.addEventListener("dragenter", onDragEnter as any);
-    container.addEventListener("dragover", onDragOver as any);
-    container.addEventListener("drop", onDrop as any);
-    canvas?.addEventListener("dragenter", onDragEnter as any);
-    canvas?.addEventListener("dragover", onDragOver as any);
-    canvas?.addEventListener("drop", onDrop as any);
-
-    return () => {
-      // Limpiar manejadores de eventos de arrastre
-      container.removeEventListener("dragenter", onDragEnter as any);
-      container.removeEventListener("dragover", onDragOver as any);
-      container.removeEventListener("drop", onDrop as any);
-      canvas?.removeEventListener("dragenter", onDragEnter as any);
-      canvas?.removeEventListener("dragover", onDragOver as any);
-      canvas?.removeEventListener("drop", onDrop as any);
-    };
-  }, []);
-
-  function colorForClient(id: string) {
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-      const char = id.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    const hue = Math.abs(hash) % 360;
-    return `hsl(${hue} 80% 60%)`;
-  }
-
-  const [copied, setCopied] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-  const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      console.error("Clipboard error", e);
-    }
-  };
-  const copyId = async () => {
-    try {
-      await navigator.clipboard.writeText(String(diagramId ?? ""));
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 1500);
-    } catch (e) {
-      console.error("Clipboard error", e);
-    }
-  };
 
   return (
     <div className="w-screen h-screen flex flex-col">
@@ -578,10 +154,12 @@ export default function DiagramByIdPage() {
           <h1 className="text-lg font-semibold">UML Diagram (ID: {diagramId})</h1>
           <span className="text-sm text-gray-500">Colaboración en tiempo real</span>
           <span className="ml-2 text-xs rounded-full border px-2 py-0.5 text-gray-700 bg-gray-50">
-            {tool === "select" && "Herramienta: Selección"}
+            {tool === "select" && "Herramienta: Selección (arrastrar fondo para mover, rueda para zoom, flechas para navegar)"}
             {tool === "uml-class" && "Herramienta: Clase (clic en la pizarra o arrastre)"}
             {tool === "uml-interface" && "Herramienta: Interfaz (clic en la pizarra o arrastre)"}
             {tool === "uml-abstract" && "Herramienta: Abstracta (clic en la pizarra o arrastre)"}
+            {tool === "uml-enum" && "Herramienta: Enumeración (clic en la pizarra o arrastre)"}
+            {tool === "uml-package" && "Herramienta: Paquete (clic en la pizarra o arrastre)"}
             {tool === "assoc" && "Herramienta: Asociación (clic origen y luego destino)"}
             {tool === "aggregation" && "Herramienta: Agregación (clic origen y luego destino)"}
             {tool === "composition" && "Herramienta: Composición (clic origen y luego destino)"}
@@ -591,13 +169,52 @@ export default function DiagramByIdPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setShowChatbot(true)}
+            className="inline-flex items-center justify-center rounded-md bg-green-600 text-white px-4 py-1.5 text-sm hover:bg-green-700"
+          >
+            🤖 Asistente IA
+          </button>
+          <button
+            onClick={() => {
+              // Prueba específica del chatbot con el caso que está fallando
+              const testMessage = "Crea un sistema de gestión de alumnos con las clases Alumno, Asignatura, Nota y Profesor";
+              console.log('Enviando mensaje de prueba:', testMessage);
+              
+              // Simular la respuesta del chatbot
+              fetch('/api/chatbot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: testMessage, history: [] }),
+              })
+              .then(response => response.json())
+              .then(data => {
+                console.log('Respuesta del chatbot:', data);
+                if (data.suggestions && data.suggestions.length > 0) {
+                  console.log('Aplicando sugerencias:', data.suggestions);
+                  data.suggestions.forEach((suggestion: any) => {
+                    handleApplySuggestion(suggestion);
+                  });
+                } else {
+                  console.log('No se encontraron sugerencias en la respuesta');
+                  console.log('Mensaje completo:', data.message);
+                }
+              })
+              .catch(error => {
+                console.error('Error al probar chatbot:', error);
+              });
+            }}
+            className="inline-flex items-center justify-center rounded-md bg-purple-600 text-white px-3 py-1.5 text-sm hover:bg-purple-700"
+          >
+            🧪 Prueba Chatbot
+          </button>
+          <button
             onClick={copyLink}
             className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
             {copied ? "Enlace copiado" : "Copiar enlace"}
           </button>
           <button
-            onClick={copyId}
+            onClick={() => copyId(diagramId)}
             className="inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm hover:bg-gray-50"
           >
             {copiedId ? "ID copiado" : "Copiar ID"}
@@ -624,21 +241,22 @@ export default function DiagramByIdPage() {
           className="flex-1 relative" 
           ref={containerRef} 
           style={{ 
-            overflow: 'auto',
+            overflow: 'hidden', // Eliminar barras de desplazamiento
             width: '100%',
             height: '100%',
-            position: 'relative'
+            position: 'relative',
+            cursor: isPanning ? 'grabbing' : 'grab' // Cambiar cursor para indicar que se puede arrastrar
           }}
         >
           <div 
             ref={canvasRef}
             style={{ 
-              cursor: isPanning ? 'grabbing' : 'default',
+              cursor: isPanning ? 'grabbing' : 'grab',
               userSelect: 'none',
               touchAction: 'none',
               position: 'absolute',
-              minWidth: '3000px',
-              minHeight: '2000px',
+              width: '100%',
+              height: '100%',
               transformOrigin: '0 0'
             }}
           />
@@ -710,7 +328,7 @@ export default function DiagramByIdPage() {
               if (!cell) return;
               applyClassDataToCell(cell, updated as any);
               // Update local selected state to reflect immediate UI changes
-              setSelected((prev) => (prev ? { ...prev, ...updated } as ClassData : prev));
+              setSelected((prev: ClassData | null) => (prev ? { ...prev, ...updated } as ClassData : prev));
             }}
             onClear={() => setSelected(null)}
           />
@@ -728,7 +346,7 @@ export default function DiagramByIdPage() {
               applyLinkDataToCell(cell, updated);
               
               // Update the local state to reflect the changes
-              setLinkSelected(prev => prev ? { ...prev, ...updated } : null);
+              setLinkSelected((prev: any) => prev ? { ...prev, ...updated } : null);
               
               // Find the view and update it
               const paper = paperRef.current;
@@ -744,6 +362,42 @@ export default function DiagramByIdPage() {
           />
         )}
       </div>
+
+      {/* Chatbot Modal */}
+      {showChatbot && (
+        <Chatbot
+          onApplySuggestion={handleApplySuggestion}
+          onApplyAllSuggestions={handleApplyAllSuggestions}
+          onClose={() => setShowChatbot(false)}
+          onResponse={handleChatResponse}
+        />
+      )}
+
+      {/* Sugerencias del Chatbot */}
+      {chatSuggestions.length > 0 && (
+        <div className="fixed bottom-4 left-4 right-4 max-w-4xl mx-auto z-40">
+          <div className="bg-white rounded-lg shadow-lg border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-lg">Sugerencias del Asistente IA</h3>
+              <button
+                onClick={() => setChatSuggestions([])}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {chatSuggestions.map((suggestion, index) => (
+                <DiagramSuggestionCard
+                  key={index}
+                  suggestion={suggestion}
+                  onApply={handleApplySuggestion}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

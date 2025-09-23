@@ -14,7 +14,7 @@ export interface LabelOptions {
  * Crea un label válido para JointJS
  */
 export function createLabel(options: LabelOptions): joint.dia.Link.Label {
-  const { text, position = 'center', fontSize = 12, fill = '#000', offset = {} } = options;
+  const { text, position = 'center', fontSize = 13, fill = '#000000', offset = {} } = options; // Aumentado fontSize y especificado fill
 
   let pos = 0.5;
   switch (position) {
@@ -31,7 +31,7 @@ export function createLabel(options: LabelOptions): joint.dia.Link.Label {
         text,
         fill,
         'font-size': fontSize,
-        'font-family': 'sans-serif',
+        'font-family': 'Arial, sans-serif', // Cambiado a Arial para consistencia
         'ref-x': offset.x || 0,
         'ref-y': offset.y || 0,
         'text-anchor': 'middle',

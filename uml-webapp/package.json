@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/react-window": "^1.8.8",
     "axios": "^1.12.2",
+    "groq-sdk": "^0.32.0",
     "jointjs": "^3.7.5",
     "mongoose": "^8.18.1",
     "next": "15.5.3",
