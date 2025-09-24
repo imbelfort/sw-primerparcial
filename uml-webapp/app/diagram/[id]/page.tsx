@@ -11,6 +11,8 @@ import { SpringCodeGeneratorComponent } from "../../../components/SpringCodeGene
 import { applyClassDataToCell, applyLinkDataToCell } from "../../../lib/umlTools";
 import * as joint from "jointjs";
 import "jointjs/dist/joint.css";
+// Importar el plugin UML de JointJS
+import "jointjs/dist/joint.shapes.uml.js";
 
 // Importar todos los hooks personalizados
 import {

@@ -194,6 +194,15 @@ function extractMessageAndSuggestions(message: string) {
               }
             } catch (repairError) {
               console.warn('Error al parsear JSON reparado:', repairError);
+              
+              // Último intento: extraer solo las sugerencias válidas
+              const partialSuggestions = extractPartialSuggestions(jsonStr);
+              if (partialSuggestions.length > 0) {
+                console.log('Extraídas sugerencias parciales:', partialSuggestions.length);
+                suggestions = partialSuggestions;
+                cleanMessage = message.replace(pattern, '').trim();
+                break;
+              }
             }
           }
         }
@@ -305,17 +314,79 @@ function repairJson(jsonStr: string): string | null {
     // Reparar objetos cortados
     repaired = repaired.replace(/\{\s*\n\s*([^}]*?)\s*\n\s*\}/g, '{$1}');
     
+    // Reparar comas faltantes en arrays
+    repaired = repaired.replace(/"\s*\]/g, '"]');
+    repaired = repaired.replace(/"\s*}/g, '"}');
+    
+    // Reparar comas faltantes en objetos
+    repaired = repaired.replace(/"\s*"/g, '", "');
+    repaired = repaired.replace(/}\s*{/g, '}, {');
+    repaired = repaired.replace(/]\s*\[/g, '], [');
+    
+    // Reparar comas faltantes después de valores
+    repaired = repaired.replace(/([^,}\]])\s*"/g, '$1, "');
+    repaired = repaired.replace(/([^,}\]])\s*\[/g, '$1, [');
+    repaired = repaired.replace(/([^,}\]])\s*{/g, '$1, {');
+    
+    // Reparar comas faltantes antes de cierre de arrays/objetos
+    repaired = repaired.replace(/([^,}\]])\s*]/g, '$1]');
+    repaired = repaired.replace(/([^,}\]])\s*}/g, '$1}');
+    
+    // Limpiar comas duplicadas
+    repaired = repaired.replace(/,\s*,/g, ',');
+    repaired = repaired.replace(/,\s*]/g, ']');
+    repaired = repaired.replace(/,\s*}/g, '}');
+    
     // Asegurar que el JSON esté completo
     if (!repaired.includes('"suggestions"')) {
       return null;
     }
     
-    // Buscar el final del objeto suggestions
+    // Buscar el final del objeto suggestions de manera más robusta
     const suggestionsStart = repaired.indexOf('"suggestions"');
-    const suggestionsEnd = repaired.lastIndexOf('}');
+    if (suggestionsStart === -1) {
+      return null;
+    }
     
-    if (suggestionsStart !== -1 && suggestionsEnd !== -1) {
-      repaired = repaired.substring(0, suggestionsEnd + 1);
+    // Encontrar el final del objeto principal contando llaves
+    let braceCount = 0;
+    let inString = false;
+    let escapeNext = false;
+    let endIndex = suggestionsStart;
+    
+    for (let i = suggestionsStart; i < repaired.length; i++) {
+      const char = repaired[i];
+      
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escapeNext = true;
+        continue;
+      }
+      
+      if (char === '"' && !escapeNext) {
+        inString = !inString;
+        continue;
+      }
+      
+      if (!inString) {
+        if (char === '{') {
+          braceCount++;
+        } else if (char === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endIndex = i;
+            break;
+          }
+        }
+      }
+    }
+    
+    if (endIndex > suggestionsStart) {
+      repaired = repaired.substring(0, endIndex + 1);
     }
     
     console.log('JSON reparado:', repaired.substring(0, 200) + '...');
@@ -324,6 +395,73 @@ function repairJson(jsonStr: string): string | null {
   } catch (error) {
     console.warn('Error al reparar JSON:', error);
     return null;
+  }
+}
+
+function extractPartialSuggestions(jsonStr: string): any[] {
+  try {
+    const suggestions: any[] = [];
+    
+    // Buscar objetos de sugerencias individuales usando regex
+    const suggestionPattern = /\{\s*"type"\s*:\s*"class"\s*,\s*"name"\s*:\s*"([^"]+)"[^}]*\}/g;
+    let match;
+    
+    while ((match = suggestionPattern.exec(jsonStr)) !== null) {
+      try {
+        // Intentar extraer el objeto completo
+        const startIndex = match.index;
+        let braceCount = 0;
+        let inString = false;
+        let escapeNext = false;
+        let endIndex = startIndex;
+        
+        for (let i = startIndex; i < jsonStr.length; i++) {
+          const char = jsonStr[i];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{') {
+              braceCount++;
+            } else if (char === '}') {
+              braceCount--;
+              if (braceCount === 0) {
+                endIndex = i;
+                break;
+              }
+            }
+          }
+        }
+        
+        const suggestionStr = jsonStr.substring(startIndex, endIndex + 1);
+        const suggestion = JSON.parse(suggestionStr);
+        
+        if (suggestion.type === 'class' && suggestion.name) {
+          suggestions.push(suggestion);
+        }
+      } catch (e) {
+        // Ignorar sugerencias malformadas individuales
+        continue;
+      }
+    }
+    
+    return suggestions;
+  } catch (error) {
+    console.warn('Error al extraer sugerencias parciales:', error);
+    return [];
   }
 }
 

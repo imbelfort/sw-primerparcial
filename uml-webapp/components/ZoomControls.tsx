@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import * as joint from 'jointjs';
+import { ExportModal, exportCanvas } from './ExportUtils';
 
 interface ZoomControlsProps {
   paper: joint.dia.Paper | null;
@@ -7,6 +8,8 @@ interface ZoomControlsProps {
 }
 
 export function ZoomControls({ paper, className = '' }: ZoomControlsProps) {
+  const [showExportModal, setShowExportModal] = useState(false);
+
   const zoomIn = () => {
     if (!paper) return;
     const currentScale = paper.scale().sx;
@@ -25,37 +28,62 @@ export function ZoomControls({ paper, className = '' }: ZoomControlsProps) {
     paper.translate(0, 0);
   };
 
+  const handleExport = (format: 'pdf' | 'png') => {
+    exportCanvas(paper, format);
+    setShowExportModal(false);
+  };
+
   return (
-    <div className={`flex flex-col space-y-2 ${className}`}>
-      <button
-        onClick={zoomIn}
-        className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
-        title="Acercar (Ctrl + +)"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-        </svg>
-      </button>
+    <>
+      <div className={`flex flex-col space-y-2 ${className}`}>
+        <button
+          onClick={zoomIn}
+          className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="Acercar (Ctrl + +)"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+        </button>
+        
+        <button
+          onClick={zoomOut}
+          className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="Alejar (Ctrl + -)"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+          </svg>
+        </button>
+        
+        <button
+          onClick={resetZoom}
+          className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="Restablecer zoom (0)"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+          </svg>
+        </button>
+        
+        <div className="border-t border-gray-200 my-2"></div>
+        
+        <button
+          onClick={() => setShowExportModal(true)}
+          className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
+          title="Exportar diagrama"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </button>
+      </div>
       
-      <button
-        onClick={zoomOut}
-        className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
-        title="Alejar (Ctrl + -)"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
-        </svg>
-      </button>
-      
-      <button
-        onClick={resetZoom}
-        className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center hover:bg-gray-100 transition-colors"
-        title="Restablecer zoom (0)"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-        </svg>
-      </button>
-    </div>
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+      />
+    </>
   );
 }

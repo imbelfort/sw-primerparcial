@@ -2,6 +2,14 @@ import { useCallback, useEffect, useRef } from 'react';
 import * as joint from 'jointjs';
 import { Tool } from '../../components/Toolbox';
 import { createUmlNode as createUmlNodeLib, createUmlLink as createUmlLinkLib, getClassDataFromCell, getLinkDataFromCell } from '../../lib/umlTools';
+import { 
+  updateLabelsTextAnchor, 
+  createElementTools, 
+  createLinkWithLabelsTools,
+  createLabelEditTools,
+  orthogonalRouter,
+  scaleToFit
+} from '../../lib/umlAdvancedTools';
 
 // Hook para manejar la inicialización y configuración de JointJS
 export function useJointJS(
@@ -38,7 +46,7 @@ export function useJointJS(
         name: "boundary",
         args: {
           sticky: true,
-          offset: 8,
+          offset: 3,
           priority: ['right', 'left', 'top', 'bottom']
         }
       },
@@ -52,16 +60,16 @@ export function useJointJS(
         attrs: { 
           line: { 
             stroke: "#000000", 
-            strokeWidth: 2,
+            strokeWidth: 1,
             'stroke-linecap': 'round',
             'stroke-linejoin': 'round'
           } 
         },
         router: {
-          name: 'manhattan',
+          name: 'orthogonal',
           args: {
-            padding: 15,
-            step: 15,
+            padding: 10,
+            step: 10,
             startDirection: 'right',
             endDirection: 'left',
             excludeEnds: ['top', 'bottom'],
@@ -116,6 +124,53 @@ export function useJointJS(
         cell.set('interactive', true);
       }
     });
+
+    // Bandera para controlar el ajuste automático del canvas
+    let isKeyboardNavigating = false;
+    let adjustTimeout: NodeJS.Timeout | null = null;
+
+    // Función para ajustar automáticamente el tamaño del canvas
+    const adjustCanvasSize = () => {
+      // No ajustar si se está navegando con teclado
+      if (isKeyboardNavigating) return;
+      
+      try {
+        const bbox = graph.getBBox();
+        if (bbox) {
+          // Agregar margen alrededor del contenido
+          const margin = 100;
+          
+          // Ajustar el viewport del paper para incluir todo el contenido
+          paper.scaleContentToFit({
+            padding: margin,
+            scaleGrid: 0.1,
+            preserveAspectRatio: true
+          });
+        }
+      } catch (error) {
+        console.warn('Error ajustando tamaño del canvas:', error);
+      }
+    };
+
+    // Escuchar cambios en el grafo para ajustar el tamaño automáticamente
+    (graph as any).on('change:position change:size add remove', () => {
+      // Cancelar timeout anterior si existe
+      if (adjustTimeout) {
+        clearTimeout(adjustTimeout);
+      }
+      
+      // Usar setTimeout para evitar múltiples ajustes durante operaciones rápidas
+      adjustTimeout = setTimeout(() => {
+        // Usar scaleToFit para mejor ajuste automático
+        scaleToFit(paper, graph);
+        adjustTimeout = null;
+      }, 200); // Aumentado el delay para evitar ajustes durante navegación rápida
+    });
+
+    // Exponer función para controlar la navegación con teclado
+    (paper as any).setKeyboardNavigating = (navigating: boolean) => {
+      isKeyboardNavigating = navigating;
+    };
 
     // Canvas limpio - sin elementos de ejemplo
 
@@ -216,7 +271,53 @@ export function useJointJS(
       onContextMenu({ visible: false, x: 0, y: 0, cellId: null });
     };
 
-    pAny.on("blank:pointerdown", onBlankPointerDown);
+    // Event handlers para herramientas avanzadas
+    const onElementPointerClick = (elementView: any) => {
+      // Remover herramientas existentes
+      paper.removeTools();
+      
+      const element = elementView.model;
+      
+      // Agregar herramientas al elemento
+      const elementTools = createElementTools(element);
+      const elementToolsView = new joint.dia.ToolsView({ tools: elementTools });
+      elementView.addTools(elementToolsView);
+      
+      // Agregar herramientas a los enlaces conectados
+      const connectedLinks = graph.getConnectedLinks(element);
+      connectedLinks.forEach((link: any) => {
+        const linkView = paper.findViewByModel(link);
+        if (linkView) {
+          const linkTools = createLinkWithLabelsTools(link, element);
+          const linkToolsView = new joint.dia.ToolsView({ tools: linkTools });
+          linkView.addTools(linkToolsView);
+        }
+      });
+    };
+
+    const onLinkPointerClick = (linkView: any) => {
+      // Remover herramientas existentes
+      paper.removeTools();
+      
+      const link = linkView.model;
+      
+      // Agregar herramientas al enlace
+      const linkTools = createLabelEditTools(link);
+      const linkToolsView = new joint.dia.ToolsView({ tools: linkTools });
+      linkView.addTools(linkToolsView);
+      
+      // Actualizar posicionamiento de etiquetas
+      updateLabelsTextAnchor(link);
+    };
+
+    const onBlankPointerDownAdvanced = () => {
+      // Remover herramientas cuando se hace clic en el fondo
+      paper.removeTools();
+    };
+
+    pAny.on("element:pointerclick", onElementPointerClick);
+    pAny.on("link:pointerclick", onLinkPointerClick);
+    pAny.on("blank:pointerdown", onBlankPointerDownAdvanced);
     pAny.on("cell:pointerdown", onCellPointerDown);
     pAny.on("cell:contextmenu", onCellContextMenu);
     pAny.on("blank:contextmenu", onBlankContextMenu);
@@ -231,7 +332,9 @@ export function useJointJS(
       graph.clear();
       graphRef.current = null;
       paperRef.current = null;
-      pAny.off?.("blank:pointerdown", onBlankPointerDown);
+      pAny.off?.("element:pointerclick", onElementPointerClick);
+      pAny.off?.("link:pointerclick", onLinkPointerClick);
+      pAny.off?.("blank:pointerdown", onBlankPointerDownAdvanced);
       pAny.off?.("cell:pointerdown", onCellPointerDown);
       pAny.off?.("cell:contextmenu", onCellContextMenu);
       pAny.off?.("blank:contextmenu", onBlankContextMenu);

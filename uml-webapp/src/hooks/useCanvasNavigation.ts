@@ -68,27 +68,44 @@ export function useCanvasNavigation(
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (tool !== "select" || !paperRef.current) return;
     
-    const step = 20; // Píxeles a mover por tecla
+    // Reducir el paso para movimiento más suave
+    const step = 10; // Reducido de 20 a 10 píxeles
     const currentTranslate = paperRef.current.translate();
+    
+    // Verificar si se está presionando Shift para movimiento más rápido
+    const fastStep = e.shiftKey ? step * 3 : step;
+    
+    // Activar bandera de navegación con teclado
+    const paperAny = paperRef.current as any;
+    if (paperAny.setKeyboardNavigating) {
+      paperAny.setKeyboardNavigating(true);
+    }
     
     switch (e.key) {
       case 'ArrowUp':
-        paperRef.current.translate(currentTranslate.tx, currentTranslate.ty - step);
+        paperRef.current.translate(currentTranslate.tx, currentTranslate.ty - fastStep);
         e.preventDefault();
         break;
       case 'ArrowDown':
-        paperRef.current.translate(currentTranslate.tx, currentTranslate.ty + step);
+        paperRef.current.translate(currentTranslate.tx, currentTranslate.ty + fastStep);
         e.preventDefault();
         break;
       case 'ArrowLeft':
-        paperRef.current.translate(currentTranslate.tx - step, currentTranslate.ty);
+        paperRef.current.translate(currentTranslate.tx - fastStep, currentTranslate.ty);
         e.preventDefault();
         break;
       case 'ArrowRight':
-        paperRef.current.translate(currentTranslate.tx + step, currentTranslate.ty);
+        paperRef.current.translate(currentTranslate.tx + fastStep, currentTranslate.ty);
         e.preventDefault();
         break;
     }
+    
+    // Desactivar bandera después de un breve delay
+    setTimeout(() => {
+      if (paperAny.setKeyboardNavigating) {
+        paperAny.setKeyboardNavigating(false);
+      }
+    }, 100);
   }, [tool, paperRef]);
 
   // Configurar eventos del mouse y teclado

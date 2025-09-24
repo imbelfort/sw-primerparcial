@@ -59,9 +59,9 @@ export function useChatbotLogic(
           [`.uml-${typePrefix}-name-rect`]: { fill: '#ffffff', stroke: '#000000', strokeWidth: 2 },
           [`.uml-${typePrefix}-attributes-rect`]: { fill: '#ffffff', stroke: '#000000', strokeWidth: 1 },
           [`.uml-${typePrefix}-methods-rect`]: { fill: '#ffffff', stroke: '#000000', strokeWidth: 1 },
-          [`.uml-${typePrefix}-name-text`]: { fill: '#000000', fontSize: 14, fontFamily: 'Arial, sans-serif', fontWeight: 'bold' },
-          [`.uml-${typePrefix}-attributes-text`]: { fill: '#000000', fontSize: 12, fontFamily: 'Arial, sans-serif' },
-          [`.uml-${typePrefix}-methods-text`]: { fill: '#000000', fontSize: 12, fontFamily: 'Arial, sans-serif' }
+          [`.uml-${typePrefix}-name-text`]: { fill: '#000000', fontSize: 18, fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', fontWeight: '600' },
+          [`.uml-${typePrefix}-attributes-text`]: { fill: '#000000', fontSize: 16, fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+          [`.uml-${typePrefix}-methods-text`]: { fill: '#000000', fontSize: 16, fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }
         });
 
         // Agregar al grafo
@@ -108,7 +108,7 @@ export function useChatbotLogic(
         rect.resize(180, 70);
         rect.attr({ 
           body: { fill: "#ffffff", stroke: "#000000", strokeWidth: 2 }, 
-          label: { text: suggestion.name || "NuevaClase", fill: "#000000", fontSize: 14, fontFamily: "Arial, sans-serif", fontWeight: "bold" } 
+          label: { text: suggestion.name || "NuevaClase", fill: "#000000", fontSize: 18, fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: "600" } 
         });
         rect.addTo(graphRef.current);
       }
@@ -154,8 +154,9 @@ export function useChatbotLogic(
                         text: {
                           text: rel.label,
                           fill: '#000000',
-                          fontSize: 12,
-                          fontFamily: 'Arial, sans-serif',
+                                fontSize: 16,
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                fontWeight: '500',
                           textAnchor: 'middle',
                           yAlignment: 'middle'
                         },
@@ -186,7 +187,7 @@ export function useChatbotLogic(
                           text: rel.sourceMultiplicity,
                           fill: '#000000',
                           fontSize: 11,
-                          fontFamily: 'Arial, sans-serif',
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                           textAnchor: 'middle',
                           yAlignment: 'middle'
                         },
@@ -217,7 +218,7 @@ export function useChatbotLogic(
                           text: rel.multiplicity,
                           fill: '#000000',
                           fontSize: 11,
-                          fontFamily: 'Arial, sans-serif',
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                           textAnchor: 'middle',
                           yAlignment: 'middle'
                         },
@@ -342,8 +343,9 @@ export function useChatbotLogic(
                               text: {
                                 text: rel.label,
                                 fill: '#000000',
-                                fontSize: 12,
-                                fontFamily: 'Arial, sans-serif',
+                                fontSize: 16,
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                fontWeight: '500',
                                 textAnchor: 'middle',
                                 yAlignment: 'middle'
                               },
@@ -375,7 +377,7 @@ export function useChatbotLogic(
                                 text: rel.sourceMultiplicity,
                                 fill: '#000000',
                                 fontSize: 11,
-                                fontFamily: 'Arial, sans-serif',
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                                 textAnchor: 'middle',
                                 yAlignment: 'middle'
                               },
@@ -407,7 +409,7 @@ export function useChatbotLogic(
                                 text: rel.multiplicity,
                                 fill: '#000000',
                                 fontSize: 11,
-                                fontFamily: 'Arial, sans-serif',
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                                 textAnchor: 'middle',
                                 yAlignment: 'middle'
                               },
@@ -538,20 +540,20 @@ export function useChatbotLogic(
           [`.uml-${typePrefix}-name-text`]: { 
             fill: '#000000', 
             fontSize: 15, 
-            fontFamily: 'Arial, sans-serif', 
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', 
             fontWeight: 'bold',
             textAnchor: 'middle'
           },
           [`.uml-${typePrefix}-attributes-text`]: { 
             fill: '#000000', 
             fontSize: 13, 
-            fontFamily: 'Arial, sans-serif',
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             textAnchor: 'start'
           },
           [`.uml-${typePrefix}-methods-text`]: { 
             fill: '#000000', 
             fontSize: 13, 
-            fontFamily: 'Arial, sans-serif',
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             textAnchor: 'start'
           }
         });
@@ -601,7 +603,7 @@ export function useChatbotLogic(
         rect.set('z', 10);
         rect.attr({ 
           body: { fill: "#ffffff", stroke: "#000000", strokeWidth: 2 }, 
-          label: { text: suggestion.name || "NuevaClase", fill: "#000000", fontSize: 14, fontFamily: "Arial, sans-serif", fontWeight: "bold" } 
+          label: { text: suggestion.name || "NuevaClase", fill: "#000000", fontSize: 18, fontFamily: "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", fontWeight: "600" } 
         });
         rect.addTo(graphRef.current);
       }
