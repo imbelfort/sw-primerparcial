@@ -65,17 +65,7 @@ export function useJointJS(
             'stroke-linejoin': 'round'
           } 
         },
-        router: {
-          name: 'orthogonal',
-          args: {
-            padding: 10,
-            step: 10,
-            startDirection: 'right',
-            endDirection: 'left',
-            excludeEnds: ['top', 'bottom'],
-            excludeStart: ['top', 'bottom']
-          }
-        }
+        router: orthogonalRouter
       },
       snapLinks: { radius: 75 },
       linkPinning: false,
@@ -122,6 +112,9 @@ export function useJointJS(
         cell.set('z', 1);
         cell.set('selectable', true);
         cell.set('interactive', true);
+        
+        // Aplicar router personalizado a todos los enlaces
+        cell.set('router', orthogonalRouter);
       }
     });
 
@@ -167,10 +160,66 @@ export function useJointJS(
       }, 200); // Aumentado el delay para evitar ajustes durante navegación rápida
     });
 
+    // Función para aplicar router personalizado a todos los enlaces existentes
+    const applyCustomRouterToAllLinks = () => {
+      const links = graph.getLinks();
+      links.forEach((link: any) => {
+        // Forzar la aplicación del router personalizado
+        link.set('router', orthogonalRouter);
+        // También aplicar la configuración completa de UML_LINK_CONFIG
+        link.set('connectionPoint', {
+          name: 'boundary',
+          args: {
+            sticky: true,
+            offset: 3,
+            priority: ['right', 'left', 'top', 'bottom']
+          }
+        });
+        // Forzar re-renderizado del enlace
+        link.trigger('change:router');
+      });
+    };
+
+    // Aplicar router personalizado después de cargar desde JSON
+    (graph as any).on('batch:stop', () => {
+      // Este evento se dispara después de operaciones batch como fromJSON
+      setTimeout(() => {
+        applyCustomRouterToAllLinks();
+      }, 100);
+    });
+
+    // También aplicar cuando se agregan enlaces individualmente
+    (graph as any).on('add', (cell: any) => {
+      if (cell.isLink && cell.isLink()) {
+        setTimeout(() => {
+          cell.set('router', orthogonalRouter);
+          cell.trigger('change:router');
+        }, 50);
+      }
+    });
+
+    // Detectar cuando se carga desde JSON y aplicar router personalizado
+    let isFromJSON = false;
+    (graph as any).on('batch:start', () => {
+      isFromJSON = true;
+    });
+    
+    (graph as any).on('batch:stop', () => {
+      if (isFromJSON) {
+        setTimeout(() => {
+          applyCustomRouterToAllLinks();
+          isFromJSON = false;
+        }, 150);
+      }
+    });
+
     // Exponer función para controlar la navegación con teclado
     (paper as any).setKeyboardNavigating = (navigating: boolean) => {
       isKeyboardNavigating = navigating;
     };
+
+    // Exponer función para aplicar router personalizado (para usar desde Socket.IO)
+    (paper as any).applyCustomRouterToAllLinks = applyCustomRouterToAllLinks;
 
     // Canvas limpio - sin elementos de ejemplo
 

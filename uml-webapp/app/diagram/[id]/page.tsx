@@ -129,7 +129,8 @@ export default function DiagramByIdPage() {
     graphRef,
     suppressRemoteRef,
     setPeerCursors,
-    containerRef
+    containerRef,
+    paperRef
   );
 
   // Drag and drop

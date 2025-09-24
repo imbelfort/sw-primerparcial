@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import * as joint from 'jointjs';
 import { createUmlLink as createUmlLinkLib } from '../../lib/umlTools';
+import { orthogonalRouter } from '../../lib/umlAdvancedTools';
 
 // Hook para manejar la lógica del chatbot
 export function useChatbotLogic(
@@ -315,6 +316,12 @@ export function useChatbotLogic(
                 const reverseKey = getRelationshipKey(rel.target, suggestion.name, rel.type);
                 
                 if (!createdRelationships.has(relationshipKey) && !createdRelationships.has(reverseKey)) {
+                  // Verificar que ambos elementos existen
+                  if (!sourceCell || !targetCell) {
+                    console.warn('Elementos fuente o destino no encontrados para relación:', rel);
+                    return;
+                  }
+
                   let linkType: any = "assoc";
                   if (rel.type === "generalization") linkType = "generalization";
                   else if (rel.type === "composition") linkType = "composition";
@@ -329,6 +336,17 @@ export function useChatbotLogic(
                       // Asegurar que el link sea seleccionable
                       link.set('selectable', true);
                       link.set('interactive', true);
+                      
+                      // Aplicar router personalizado y configuración completa
+                      link.set('router', orthogonalRouter);
+                      link.set('connectionPoint', {
+                        name: 'boundary',
+                        args: {
+                          sticky: true,
+                          offset: 3,
+                          priority: ['right', 'left', 'top', 'bottom']
+                        }
+                      });
                       
                       // Aplicar etiquetas y multiplicidades si están disponibles
                       if (rel.label || rel.multiplicity || rel.sourceMultiplicity) {

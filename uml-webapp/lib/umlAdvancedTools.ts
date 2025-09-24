@@ -19,7 +19,16 @@ export function updateLabelsTextAnchor(link: joint.dia.Link) {
       anchorDef = link.source().anchor;
     }
     
+    // Verificar que tenemos los datos necesarios
+    if (!element || !anchorDef || !element.getBBox) {
+      return label; // Retornar label sin modificar si faltan datos
+    }
+    
     const bbox = element.getBBox();
+    if (!bbox) {
+      return label; // Retornar label sin modificar si no hay bbox
+    }
+    
     const { name = "topLeft", args = {} } = anchorDef;
     const anchorName = joint.util.toKebabCase(name) as any;
     const anchorOffset = { x: args.dx || 0, y: args.dy || 0 };
@@ -41,6 +50,16 @@ export function updateLabelsTextAnchor(link: joint.dia.Link) {
  * Router ortogonal personalizado simplificado
  */
 export function orthogonalRouter(vertices: any[], opt: any, linkView: any): any[] {
+  // Verificar que tenemos los datos necesarios
+  if (!linkView || !linkView.sourceBBox || !linkView.targetBBox || 
+      !linkView.sourceAnchor || !linkView.targetAnchor) {
+    // Fallback a router básico si faltan datos
+    return [
+      { x: 0, y: 0 },
+      { x: 100, y: 100 }
+    ];
+  }
+
   const sourceBBox = linkView.sourceBBox;
   const targetBBox = linkView.targetBBox;
   const sourcePoint = linkView.sourceAnchor;

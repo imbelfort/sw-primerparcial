@@ -8,7 +8,8 @@ export function useSocketIO(
   graphRef: React.RefObject<joint.dia.Graph | null>,
   suppressRemoteRef: React.MutableRefObject<boolean>,
   setPeerCursors: React.Dispatch<React.SetStateAction<Record<string, { xPct: number; yPct: number; color: string; ts: number }>>>,
-  containerRef: React.RefObject<HTMLDivElement | null>
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  paperRef?: React.RefObject<joint.dia.Paper | null>
 ) {
   const socketRef = useRef<Socket | null>(null);
 
@@ -41,6 +42,13 @@ export function useSocketIO(
       suppressRemoteRef.current = true;
       try {
         graphRef.current.fromJSON(state.json);
+        
+        // Aplicar router personalizado después de cargar desde JSON
+        setTimeout(() => {
+          if (paperRef?.current && (paperRef.current as any).applyCustomRouterToAllLinks) {
+            (paperRef.current as any).applyCustomRouterToAllLinks();
+          }
+        }, 200);
       } finally {
         setTimeout(() => {
           suppressRemoteRef.current = false;
