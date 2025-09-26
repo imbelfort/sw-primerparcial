@@ -5,11 +5,13 @@ import * as joint from 'jointjs';
 // Hook para manejar la comunicación en tiempo real con Socket.IO
 export function useSocketIO(
   diagramId: string,
-  graphRef: React.RefObject<joint.dia.Graph | null>,
+  graphRef: React.RefObject<joint.dia.Graph | null> | null,
   suppressRemoteRef: React.MutableRefObject<boolean>,
   setPeerCursors: React.Dispatch<React.SetStateAction<Record<string, { xPct: number; yPct: number; color: string; ts: number }>>>,
   containerRef: React.RefObject<HTMLDivElement | null>,
-  paperRef?: React.RefObject<joint.dia.Paper | null>
+  paperRef?: React.RefObject<joint.dia.Paper | null> | null,
+  setConnectedUsers?: React.Dispatch<React.SetStateAction<string[]>>,
+  setPeerSelections?: React.Dispatch<React.SetStateAction<Record<string, { cellId: string; type: 'class' | 'link'; ts: number }>>>
 ) {
   const socketRef = useRef<Socket | null>(null);
 
@@ -37,7 +39,7 @@ export function useSocketIO(
 
     // Recibir estado remoto del grafo
     socket.on("graph:state", (state: any) => {
-      if (!graphRef.current) return;
+      if (!graphRef?.current) return;
       if (state?.from === socket.id) return;
       suppressRemoteRef.current = true;
       try {
@@ -67,6 +69,34 @@ export function useSocketIO(
       });
     });
 
+    // Presencia: usuarios conectados en la sala
+    socket.on("room:users", ({ users, count }: { users: string[]; count: number }) => {
+      if (setConnectedUsers) {
+        // Filtrar el usuario actual de la lista
+        const otherUsers = users.filter(id => id !== socket.id);
+        setConnectedUsers(otherUsers);
+      }
+    });
+
+    // Presencia: selecciones de otros usuarios
+    socket.on("selection", ({ selection, clientId }: { selection: { cellId: string; type: 'class' | 'link' } | null; clientId: string }) => {
+      if (setPeerSelections) {
+        setPeerSelections((prev: Record<string, { cellId: string; type: 'class' | 'link'; ts: number }>) => {
+          if (!selection) {
+            // Remover selección
+            const { [clientId]: removed, ...rest } = prev;
+            return rest;
+          } else {
+            // Agregar/actualizar selección
+            return {
+              ...prev,
+              [clientId]: { ...selection, ts: Date.now() },
+            };
+          }
+        });
+      }
+    });
+
     return () => {
       socket.disconnect();
       socketRef.current = null;
@@ -75,14 +105,14 @@ export function useSocketIO(
 
   // Transmitir cambios locales (throttled)
   useEffect(() => {
-    if (!graphRef.current || !diagramId) return;
+    if (!graphRef?.current || !diagramId) return;
 
     let timeout: any = null;
     const handler = () => {
       if (suppressRemoteRef.current) return;
       if (timeout) clearTimeout(timeout);
       timeout = setTimeout(() => {
-        const json = graphRef.current?.toJSON();
+        const json = graphRef?.current?.toJSON();
         const clientId = socketRef.current?.id;
         socketRef.current?.emit("graph:update", { diagramId, json, clientId });
       }, 200);
@@ -91,10 +121,10 @@ export function useSocketIO(
     (graphRef.current as any)?.on?.("change add remove", handler);
 
     return () => {
-      (graphRef.current as any)?.off?.("change add remove", handler);
+      (graphRef?.current as any)?.off?.("change add remove", handler);
       if (timeout) clearTimeout(timeout);
     };
-  }, [diagramId]);
+  }, [diagramId, graphRef]);
 
   // Emisor de cursor throttled
   useEffect(() => {
@@ -119,7 +149,21 @@ export function useSocketIO(
     return () => container.removeEventListener("mousemove", onMove);
   }, [diagramId]);
 
-  return { socketRef };
+  // Función para enviar selección
+  const sendSelection = (selection: { cellId: string; type: 'class' | 'link' } | null) => {
+    if (socketRef.current && diagramId) {
+      socketRef.current.emit("selection", { 
+        diagramId, 
+        selection, 
+        clientId: socketRef.current.id 
+      });
+    }
+  };
+
+  return { 
+    socketRef,
+    sendSelection,
+  };
 }
 
 // Función auxiliar para generar colores únicos

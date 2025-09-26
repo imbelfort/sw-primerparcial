@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Tool } from '../components/Toolbox';
-import { ClassData } from '../components/Inspector';
-import { getLinkDataFromCell } from '../lib/umlTools';
+import { Tool } from '../../components/Toolbox';
+import { ClassData } from '../../components/Inspector';
+import { getLinkDataFromCell } from '../../lib/umlTools';
 
 // Hook para manejar el estado del diagrama
 export function useDiagramState() {
@@ -72,12 +72,18 @@ export function useNavigationState() {
 export function useCollaborationState() {
   const [peerCursors, setPeerCursors] = useState<Record<string, { xPct: number; yPct: number; color: string; ts: number }>>({});
   const [suppressRemote, setSuppressRemote] = useState(false);
+  const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
+  const [peerSelections, setPeerSelections] = useState<Record<string, { cellId: string; type: 'class' | 'link'; ts: number }>>({});
 
   return {
     peerCursors,
     setPeerCursors,
     suppressRemote,
     setSuppressRemote,
+    connectedUsers,
+    setConnectedUsers,
+    peerSelections,
+    setPeerSelections,
   };
 }
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import * as joint from 'jointjs';
 import { Tool } from '../../components/Toolbox';
-import { createUmlNode as createUmlNodeLib, createUmlLink as createUmlLinkLib, getClassDataFromCell, getLinkDataFromCell } from '../../lib/umlTools';
+import { createUmlNode as createUmlNodeLib, getClassDataFromCell } from '../../lib/umlTools';
+import { createUmlLink as createUmlLinkLib, getLinkDataFromCell } from '../../lib/umlAdvancedTools';
 import { 
   updateLabelsTextAnchor, 
   createElementTools, 
@@ -23,7 +24,8 @@ export function useJointJS(
   onLinkSelect: (data: any) => void,
   onLinkSourceChange: (id: string | null) => void,
   onPendingAnchorChange: (anchor: { x: number; y: number } | null) => void,
-  onContextMenu: (menu: { visible: boolean; x: number; y: number; cellId: string | null }) => void
+  onContextMenu: (menu: { visible: boolean; x: number; y: number; cellId: string | null }) => void,
+  sendSelection?: ((selection: { cellId: string; type: 'class' | 'link' } | null) => void) | null
 ) {
   const graphRef = useRef<joint.dia.Graph | null>(null);
   const paperRef = useRef<joint.dia.Paper | null>(null);
@@ -164,10 +166,28 @@ export function useJointJS(
     const applyCustomRouterToAllLinks = () => {
       const links = graph.getLinks();
       links.forEach((link: any) => {
-        // Forzar la aplicación del router personalizado
-        link.set('router', orthogonalRouter);
-        // También aplicar la configuración completa de UML_LINK_CONFIG
-        link.set('connectionPoint', {
+        // Solo aplicar si no tiene el router correcto para evitar parpadeo
+        if (link.get('router') !== orthogonalRouter) {
+          link.set('router', orthogonalRouter);
+          // También aplicar la configuración completa de UML_LINK_CONFIG
+          link.set('connectionPoint', {
+            name: 'boundary',
+            args: {
+              sticky: true,
+              offset: 3,
+              priority: ['right', 'left', 'top', 'bottom']
+            }
+          });
+        }
+      });
+    };
+
+    // Aplicar router cuando se agregan enlaces individualmente
+    (graph as any).on('add', (cell: any) => {
+      if (cell.isLink && cell.isLink()) {
+        // Aplicar inmediatamente sin timeout para evitar parpadeo
+        cell.set('router', orthogonalRouter);
+        cell.set('connectionPoint', {
           name: 'boundary',
           args: {
             sticky: true,
@@ -175,41 +195,24 @@ export function useJointJS(
             priority: ['right', 'left', 'top', 'bottom']
           }
         });
-        // Forzar re-renderizado del enlace
-        link.trigger('change:router');
-      });
-    };
-
-    // Aplicar router personalizado después de cargar desde JSON
-    (graph as any).on('batch:stop', () => {
-      // Este evento se dispara después de operaciones batch como fromJSON
-      setTimeout(() => {
-        applyCustomRouterToAllLinks();
-      }, 100);
-    });
-
-    // También aplicar cuando se agregan enlaces individualmente
-    (graph as any).on('add', (cell: any) => {
-      if (cell.isLink && cell.isLink()) {
-        setTimeout(() => {
-          cell.set('router', orthogonalRouter);
-          cell.trigger('change:router');
-        }, 50);
       }
     });
 
-    // Detectar cuando se carga desde JSON y aplicar router personalizado
+    // Detectar cuando se carga desde JSON y aplicar router personalizado solo una vez
     let isFromJSON = false;
+    let routerApplied = false;
     (graph as any).on('batch:start', () => {
       isFromJSON = true;
+      routerApplied = false;
     });
     
     (graph as any).on('batch:stop', () => {
-      if (isFromJSON) {
+      if (isFromJSON && !routerApplied) {
         setTimeout(() => {
           applyCustomRouterToAllLinks();
+          routerApplied = true;
           isFromJSON = false;
-        }, 150);
+        }, 100);
       }
     });
 
@@ -231,17 +234,17 @@ export function useJointJS(
       
       if (evt?.button === 2 || evt?.button === 1) return;
       
-      // Solo crear nodos si estamos en modo de creación y no hay linkSource activo
-      if ((currentTool === "uml-class" || currentTool === "uml-interface" || currentTool === "uml-abstract" || currentTool === "uml-enum" || currentTool === "uml-package") && !linkSourceRef.current) {
-        if (evt?.data?.startedWithRightClick) return;
-        createUmlNodeLib(currentTool as any, graph, x, y);
-        return;
-      }
-      
+      // Solo deseleccionar elementos cuando se hace clic en el canvas
       if (currentTool === "select") {
         onElementSelect(null);
+        // Enviar deselección
+        const currentSendSelection = sendSelection || (paper as any)?.updateSendSelection;
+        if (currentSendSelection) {
+          currentSendSelection(null);
+        }
       }
       
+      // Cancelar creación de enlaces si hay un linkSource activo
       if (linkSourceRef.current) {
         onLinkSourceChange(null);
         onPendingAnchorChange(null);
@@ -292,11 +295,21 @@ export function useJointJS(
         if (isLink) {
           const ld = getLinkDataFromCell(model);
           onLinkSelect(ld);
+          // Enviar selección de enlace
+          const currentSendSelection = sendSelection || (paper as any)?.updateSendSelection;
+          if (currentSendSelection) {
+            currentSendSelection({ cellId: model.id, type: 'link' });
+          }
           return;
         }
         const data = getClassDataFromCell(model);
         if (data) {
           onElementSelect(data);
+          // Enviar selección de clase
+          const currentSendSelection = sendSelection || (paper as any)?.updateSendSelection;
+          if (currentSendSelection) {
+            currentSendSelection({ cellId: model.id, type: 'class' });
+          }
         }
       }
     };

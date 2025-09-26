@@ -3,14 +3,14 @@
 
 import * as joint from "jointjs";
 import { autoResizeUmlCell, createUmlNode, getClassDataFromCell, applyClassDataToCell } from "./umlRenderer";
-import { getLinkDataFromCell, applyLinkDataToCell, createUmlLink } from "./umlLinks";
+import { getLinkDataFromCell, applyLinkDataToCell, createUmlLink } from "./umlAdvancedTools";
 
 // Tipos principales
 export type NodeToolKind = "uml-class" | "uml-interface" | "uml-abstract" | "uml-enum" | "uml-package";
 export type LinkToolKind = "assoc" | "aggregation" | "composition" | "dependency" | "generalization";
 
 // Re-exportar tipos de otros módulos
-export type LinkData = import("./umlLinks").LinkData;
+export type LinkData = import("./umlAdvancedTools").LinkData;
 
 // Re-exportar todas las funciones principales para mantener compatibilidad
 export { 

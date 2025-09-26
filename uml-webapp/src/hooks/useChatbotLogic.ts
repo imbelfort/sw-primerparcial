@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import * as joint from 'jointjs';
-import { createUmlLink as createUmlLinkLib } from '../../lib/umlTools';
+import { createUmlLink as createUmlLinkLib } from '../../lib/umlAdvancedTools';
 import { orthogonalRouter } from '../../lib/umlAdvancedTools';
 
 // Hook para manejar la lógica del chatbot

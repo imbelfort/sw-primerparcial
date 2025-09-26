@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { Toolbox } from "../../../components/Toolbox";
 import { Inspector, type ClassData } from "../../../components/Inspector";
@@ -8,7 +8,10 @@ import { LinkInspector } from "../../../components/LinkInspector";
 import { ZoomControls } from "../../../components/ZoomControls";
 import { Chatbot, DiagramSuggestionCard } from "../../../components/Chatbot";
 import { SpringCodeGeneratorComponent } from "../../../components/SpringCodeGenerator";
-import { applyClassDataToCell, applyLinkDataToCell } from "../../../lib/umlTools";
+import { UserPresence } from "../../../components/UserPresence";
+import { PeerSelectionOverlay } from "../../../components/PeerSelectionOverlay";
+import { applyClassDataToCell } from "../../../lib/umlTools";
+import { applyLinkDataToCell } from "../../../lib/umlAdvancedTools";
 import * as joint from "jointjs";
 import "jointjs/dist/joint.css";
 // Importar el plugin UML de JointJS
@@ -80,6 +83,10 @@ export default function DiagramByIdPage() {
   const {
     peerCursors,
     setPeerCursors,
+    connectedUsers,
+    setConnectedUsers,
+    peerSelections,
+    setPeerSelections,
   } = useCollaborationState();
 
   // Hooks para UI
@@ -102,8 +109,29 @@ export default function DiagramByIdPage() {
     setLinkSelected,
     setLinkSourceId,
     setPendingLinkAnchor,
-    setCtxMenu
+    setCtxMenu,
+    null // sendSelection se pasará después
   );
+
+  // Socket.IO para colaboración en tiempo real
+  const { sendSelection } = useSocketIO(
+    diagramId,
+    graphRef,
+    suppressRemoteRef,
+    setPeerCursors,
+    containerRef,
+    paperRef,
+    setConnectedUsers,
+    setPeerSelections
+  );
+
+  // Actualizar sendSelection en useJointJS cuando esté disponible
+  useEffect(() => {
+    if (sendSelection && paperRef.current) {
+      // Actualizar la función sendSelection en el paper
+      (paperRef.current as any).updateSendSelection = sendSelection;
+    }
+  }, [sendSelection, paperRef]);
 
   // Lógica de navegación del canvas
   useCanvasNavigation(
@@ -121,16 +149,6 @@ export default function DiagramByIdPage() {
   const { handleApplySuggestion, handleApplyAllSuggestions, handleChatResponse } = useChatbotLogic(
     graphRef,
     setChatSuggestions
-  );
-
-  // Socket.IO para colaboración en tiempo real
-  useSocketIO(
-    diagramId,
-    graphRef,
-    suppressRemoteRef,
-    setPeerCursors,
-    containerRef,
-    paperRef
   );
 
   // Drag and drop
@@ -166,6 +184,7 @@ export default function DiagramByIdPage() {
               <div className="w-2 h-2 bg-green-400 rounded-full"></div>
               <span className="text-xs text-gray-500">En línea</span>
             </div>
+            <UserPresence connectedUsers={connectedUsers} />
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -318,6 +337,13 @@ export default function DiagramByIdPage() {
               />
             </div>
           ))}
+
+          {/* Peer selections overlay */}
+          <PeerSelectionOverlay 
+            peerSelections={peerSelections}
+            paper={paperRef.current}
+            connectedUsers={connectedUsers}
+          />
         </div>
         {/* Inspectors */}
         {selected ? (
@@ -331,7 +357,11 @@ export default function DiagramByIdPage() {
               // Update local selected state to reflect immediate UI changes
               setSelected((prev: ClassData | null) => (prev ? { ...prev, ...updated } as ClassData : prev));
             }}
-            onClear={() => setSelected(null)}
+            onClear={() => {
+              setSelected(null);
+              // Enviar deselección
+              sendSelection(null);
+            }}
           />
         ) : (
           <LinkInspector
@@ -359,7 +389,11 @@ export default function DiagramByIdPage() {
                 }
               }
             }}
-            onClear={() => setLinkSelected(null)}
+            onClear={() => {
+              setLinkSelected(null);
+              // Enviar deselección
+              sendSelection(null);
+            }}
           />
         )}
       </div>

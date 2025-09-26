@@ -21,46 +21,44 @@ export default function Home() {
   }, [joinId, router]);
 
   return (
-    <div className="min-h-screen w-full bg-white text-gray-900">
-      <header className="p-6 border-b">
-        <h1 className="text-2xl font-bold">UML Collaborator</h1>
-      </header>
-      <main className="container mx-auto px-6 py-16 flex flex-col items-center text-center gap-6">
-        <h2 className="text-3xl sm:text-4xl font-semibold">Bienvenido</h2>
-        <p className="text-gray-600 max-w-prose">
-          Crea un nuevo diagrama colaborativo. No es necesario registrarse; cada sesión
-          genera un identificador único que puedes compartir con tu equipo.
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md space-y-6">
+        <div className="text-center space-y-2">
+          <h1 className="text-2xl font-light text-gray-900">Diagramador UML</h1>
+          <p className="text-sm text-gray-600">
+            Proyecto para Ingeniería de Software 1
+          </p>
+          <p className="text-xs text-gray-500 max-w-xs mx-auto">
+            Crea y edita diagramas de clases UML de forma colaborativa en tiempo real
+          </p>
+        </div>
+        
         <button
           onClick={startNewDiagram}
-          className="mt-4 inline-flex items-center justify-center rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium h-12 px-6 shadow"
+          className="w-full py-3 px-4 bg-black text-white rounded hover:bg-gray-800 transition-colors"
         >
-          Iniciar Diagramador UML
+          Nuevo Diagrama
         </button>
-        <div className="text-sm text-gray-500 mt-2">Se abrirá una sala nueva con un ID aleatorio.</div>
 
-        <div className="mt-10 w-full max-w-md">
-          <div className="text-sm font-medium text-gray-700 mb-2">Unirse a un diagrama existente</div>
-          <div className="flex items-stretch gap-2">
-            <input
-              value={joinId}
-              onChange={(e) => setJoinId(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") joinExisting();
-              }}
-              placeholder="Pega el ID del diagrama"
-              className="flex-1 rounded-md border px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={joinExisting}
-              disabled={!joinId.trim()}
-              className="inline-flex items-center justify-center rounded-md bg-gray-900 disabled:bg-gray-300 text-white px-4"
-            >
-              Unirse
-            </button>
-          </div>
+        <div className="space-y-2">
+          <input
+            value={joinId}
+            onChange={(e) => setJoinId(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") joinExisting();
+            }}
+            placeholder="ID del diagrama"
+            className="w-full py-2 px-3 border border-gray-300 rounded text-sm focus:outline-none focus:border-black"
+          />
+          <button
+            onClick={joinExisting}
+            disabled={!joinId.trim()}
+            className="w-full py-2 px-4 bg-gray-200 text-gray-600 rounded hover:bg-gray-300 disabled:opacity-50 transition-colors"
+          >
+            Unirse
+          </button>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

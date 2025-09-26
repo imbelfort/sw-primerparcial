@@ -1,14 +1,29 @@
-// uml-webapp/lib/umlTools.ts
+// uml-webapp/lib/umlAdvancedTools.ts
 // Herramientas avanzadas para edición de enlaces UML
 
 import * as joint from "jointjs";
+
+// Tipos para enlaces UML
+export type LinkToolKind = "assoc" | "aggregation" | "composition" | "dependency" | "generalization";
+
+export type LinkData = {
+  id: string;
+  kind: LinkToolKind | "standard";
+  sourceMultiplicity?: string;
+  targetMultiplicity?: string;
+  sourceRole?: string;
+  targetRole?: string;
+};
 
 /**
  * Actualiza la posición de las etiquetas de enlaces basándose en la posición del ancla
  * Esto permite que las etiquetas se posicionen correctamente sin necesidad de renderizar
  */
 export function updateLabelsTextAnchor(link: joint.dia.Link) {
-  const labels = joint.util.cloneDeep(link.labels()).map((label: any) => {
+  const currentLabels = link.labels();
+  if (!currentLabels || currentLabels.length === 0) return;
+  
+  const labels = joint.util.cloneDeep(currentLabels).map((label: any) => {
     let anchorDef: any, element: any;
     
     if (label.position.distance < 0) {
@@ -36,14 +51,28 @@ export function updateLabelsTextAnchor(link: joint.dia.Link) {
       .getRectPoint(bbox, anchorName)
       .offset(anchorOffset);
     
-    label.attrs.text.textAnchor = getTextAnchor(
-      bbox.sideNearestToPoint(anchor)
-    );
+    const newTextAnchor = getTextAnchor(bbox.sideNearestToPoint(anchor));
+    
+    // Solo actualizar si el textAnchor ha cambiado para evitar parpadeo
+    if (label.attrs.text.textAnchor !== newTextAnchor) {
+      label.attrs.text.textAnchor = newTextAnchor;
+    }
     
     return label;
   });
   
+  // Solo actualizar si hay cambios reales
+  const hasChanges = labels.some((label: any, index: number) => {
+    const currentLabel = currentLabels[index];
+    return currentLabel && 
+           currentLabel.attrs && 
+           currentLabel.attrs.text && 
+           label.attrs.text.textAnchor !== currentLabel.attrs.text.textAnchor;
+  });
+  
+  if (hasChanges) {
   link.labels(labels);
+  }
 }
 
 /**
@@ -54,10 +83,12 @@ export function orthogonalRouter(vertices: any[], opt: any, linkView: any): any[
   if (!linkView || !linkView.sourceBBox || !linkView.targetBBox || 
       !linkView.sourceAnchor || !linkView.targetAnchor) {
     // Fallback a router básico si faltan datos
-    return [
-      { x: 0, y: 0 },
-      { x: 100, y: 100 }
-    ];
+    return [];
+  }
+  
+  // Si ya hay vértices definidos, usarlos para evitar recálculos
+  if (vertices && vertices.length > 0) {
+    return vertices;
   }
 
   const sourceBBox = linkView.sourceBBox;
@@ -105,70 +136,398 @@ export function orthogonalRouter(vertices: any[], opt: any, linkView: any): any[
       break;
   }
 
-  // Casos principales de enrutamiento
-  if (sourceSide === "left" && targetSide === "right") {
-    const y = (sourceOutsidePoint.y + targetOutsidePoint.y) / 2;
-    return [
-      { x: sourceOutsidePoint.x, y: sourceOutsidePoint.y },
-      { x: sourceOutsidePoint.x, y },
-      { x: targetOutsidePoint.x, y },
-      { x: targetOutsidePoint.x, y: targetOutsidePoint.y }
-    ];
-  } else if (sourceSide === "right" && targetSide === "left") {
-    const y = (sourceOutsidePoint.y + targetOutsidePoint.y) / 2;
-    return [
-      { x: sourceOutsidePoint.x, y: sourceOutsidePoint.y },
-      { x: sourceOutsidePoint.x, y },
-      { x: targetOutsidePoint.x, y },
-      { x: targetOutsidePoint.x, y: targetOutsidePoint.y }
-    ];
-  } else if (sourceSide === "top" && targetSide === "bottom") {
-    const x = (sourceOutsidePoint.x + targetOutsidePoint.x) / 2;
-    return [
-      { x: sourceOutsidePoint.x, y: sourceOutsidePoint.y },
-      { x, y: sourceOutsidePoint.y },
-      { x, y: targetOutsidePoint.y },
-      { x: targetOutsidePoint.x, y: targetOutsidePoint.y }
-    ];
-  } else if (sourceSide === "bottom" && targetSide === "top") {
-    const x = (sourceOutsidePoint.x + targetOutsidePoint.x) / 2;
-    return [
-      { x: sourceOutsidePoint.x, y: sourceOutsidePoint.y },
-      { x, y: sourceOutsidePoint.y },
-      { x, y: targetOutsidePoint.y },
-      { x: targetOutsidePoint.x, y: targetOutsidePoint.y }
-    ];
-  }
+  const { x: sox, y: soy } = sourceOutsidePoint;
+  const { x: tox, y: toy } = targetOutsidePoint;
+  const tx1 = targetBBox.x + targetBBox.width;
+  const ty1 = targetBBox.y + targetBBox.height;
+  const tcx = (targetBBox.x + tx1) / 2;
+  const tcy = (targetBBox.y + ty1) / 2;
+  const sx1 = sourceBBox.x + sourceBBox.width;
+  const sy1 = sourceBBox.y + sourceBBox.height;
 
-  // Casos de lados iguales
-  if (sourceSide === targetSide) {
-    if (sourceSide === "top" || sourceSide === "bottom") {
-      const y = sourceSide === "top" ? 
-        Math.min(sourceOutsidePoint.y, targetOutsidePoint.y) : 
-        Math.max(sourceOutsidePoint.y, targetOutsidePoint.y);
+  // Casos principales de routing ortogonal
+  if (sourceSide === "left" && targetSide === "right") {
+    if (sox < tox) {
+      let y = (soy + toy) / 2;
+      if (sox < targetBBox.x) {
+        if (y > tcy && y < ty1 + spacing) {
+          y = targetBBox.y - spacing;
+        } else if (y <= tcy && y > targetBBox.y - spacing) {
+          y = ty1 + spacing;
+        }
+      }
       return [
-        { x: sourceOutsidePoint.x, y },
-        { x: targetOutsidePoint.x, y }
+        { x: sox, y: soy },
+        { x: sox, y },
+        { x: tox, y },
+        { x: tox, y: toy }
       ];
     } else {
-      const x = sourceSide === "left" ? 
-        Math.min(sourceOutsidePoint.x, targetOutsidePoint.x) : 
-        Math.max(sourceOutsidePoint.x, targetOutsidePoint.x);
-      return [
-        { x, y: sourceOutsidePoint.y },
-        { x, y: targetOutsidePoint.y }
+      const x = (sox + tox) / 2;
+    return [
+        { x, y: soy },
+        { x, y: toy }
       ];
     }
+  } else if (sourceSide === "right" && targetSide === "left") {
+    if (sox > tox) {
+      let y = (soy + toy) / 2;
+      if (sox > tx1) {
+        if (y > tcy && y < ty1 + spacing) {
+          y = targetBBox.y - spacing;
+        } else if (y <= tcy && y > targetBBox.y - spacing) {
+          y = ty1 + spacing;
+        }
+      }
+      return [
+        { x: sox, y: soy },
+        { x: sox, y },
+        { x: tox, y },
+        { x: tox, y: toy }
+      ];
+    } else {
+      const x = (sox + tox) / 2;
+    return [
+        { x, y: soy },
+        { x, y: toy }
+      ];
+    }
+  } else if (sourceSide === "top" && targetSide === "bottom") {
+    if (soy < toy) {
+      let x = (sox + tox) / 2;
+      if (soy < targetBBox.y) {
+        if (x > tcx && x < tx1 + spacing) {
+          x = targetBBox.x - spacing;
+        } else if (x <= tcx && x > targetBBox.x - spacing) {
+          x = tx1 + spacing;
+        }
+      }
+      return [
+        { x: sox, y: soy },
+        { x, y: soy },
+        { x, y: toy },
+        { x: tox, y: toy }
+      ];
+    }
+    const y = (soy + toy) / 2;
+    return [
+      { x: sox, y },
+      { x: tox, y }
+    ];
+  } else if (sourceSide === "bottom" && targetSide === "top") {
+    if (soy >= toy) {
+      let x = (sox + tox) / 2;
+      if (soy > ty1) {
+        if (x > tcx && x < tx1 + spacing) {
+          x = targetBBox.x - spacing;
+        } else if (x <= tcx && x > targetBBox.x - spacing) {
+          x = tx1 + spacing;
+        }
+      }
+      return [
+        { x: sox, y: soy },
+        { x, y: soy },
+        { x, y: toy },
+        { x: tox, y: toy }
+      ];
+    }
+    const y = (soy + toy) / 2;
+    return [
+      { x: sox, y },
+      { x: tox, y }
+    ];
+  } else if (sourceSide === "top" && targetSide === "top") {
+    const y = Math.min(soy, toy);
+    return [
+      { x: sox, y },
+      { x: tox, y }
+    ];
+  } else if (sourceSide === "bottom" && targetSide === "bottom") {
+    const y = Math.max(soy, toy);
+    return [
+      { x: sox, y },
+      { x: tox, y }
+    ];
+  } else if (sourceSide === "left" && targetSide === "left") {
+    const x = Math.min(sox, tox);
+    return [
+      { x, y: soy },
+      { x, y: toy }
+    ];
+  } else if (sourceSide === "right" && targetSide === "right") {
+    const x = Math.max(sox, tox);
+    return [
+      { x, y: soy },
+      { x, y: toy }
+    ];
   }
-
-  // Casos diagonales - simplificados
-  const x = (sourceOutsidePoint.x + targetOutsidePoint.x) / 2;
-  const y = (sourceOutsidePoint.y + targetOutsidePoint.y) / 2;
   
+  // Casos diagonales - routing más complejo
+  if (sourceSide === "top" && targetSide === "right") {
+    if (soy > toy) {
+      if (sox < tox) {
+        let y = (sourceBBox.y + toy) / 2;
+        if (y > tcy && y < ty1 + spacing && sox < targetBBox.x - spacing) {
+          y = targetBBox.y - spacing;
+        }
+        return [
+          { x: sox, y },
+          { x: tox, y },
+          { x: tox, y: toy }
+        ];
+      }
+      return [{ x: sox, y: toy }];
+    }
+    const x = (sourceBBox.x + tox) / 2;
+    if (x > sourceBBox.x - spacing && soy < ty1) {
+      const y = Math.min(sourceBBox.y, targetBBox.y) - spacing;
+      const x = Math.max(sx1, tx1) + spacing;
+      return [
+        { x: sox, y },
+        { x, y },
+        { x, y: toy }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: x, y: soy },
+      { x: x, y: toy }
+    ];
+  } else if (sourceSide === "top" && targetSide === "left") {
+    if (soy > toy) {
+      if (sox > tox) {
+        let y = (sourceBBox.y + toy) / 2;
+        if (y > tcy && y < ty1 + spacing && sox > tx1 + spacing) {
+          y = targetBBox.y - spacing;
+        }
+        return [
+          { x: sox, y },
+          { x: tox, y },
+          { x: tox, y: toy }
+        ];
+      }
+      return [{ x: sox, y: toy }];
+    }
+    const x = (sx1 + tox) / 2;
+    if (x < sx1 + spacing && soy < ty1) {
+      const y = Math.min(sourceBBox.y, targetBBox.y) - spacing;
+      const x = Math.min(sourceBBox.x, targetBBox.x) - spacing;
+      return [
+        { x: sox, y },
+        { x, y },
+        { x, y: toy }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: x, y: soy },
+      { x: x, y: toy }
+    ];
+  } else if (sourceSide === "bottom" && targetSide === "right") {
+    if (soy < toy) {
+      if (sox < tox) {
+        let y = (sy1 + targetBBox.y) / 2;
+        if (y < tcy && y > targetBBox.y - spacing && sox < targetBBox.x - spacing) {
+          y = ty1 + spacing;
+        }
+        return [
+          { x: sox, y },
+          { x: tox, y },
+          { x: tox, y: toy }
+        ];
+      }
+      return [
+        { x: sox, y: soy },
+        { x: sox, y: toy },
+        { x: tox, y: toy }
+      ];
+    }
+    const x = (sourceBBox.x + tox) / 2;
+    if (x > sourceBBox.x - spacing && sy1 > toy) {
+      const y = Math.max(sy1, ty1) + spacing;
+      const x = Math.max(sx1, tx1) + spacing;
+      return [
+        { x: sox, y },
+        { x, y },
+        { x, y: toy }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: x, y: soy },
+      { x: x, y: toy },
+      { x: tox, y: toy }
+    ];
+  } else if (sourceSide === "bottom" && targetSide === "left") {
+    if (soy < toy) {
+      if (sox > tox) {
+        let y = (sy1 + targetBBox.y) / 2;
+        if (y < tcy && y > targetBBox.y - spacing && sox > tx1 + spacing) {
+          y = ty1 + spacing;
+        }
+        return [
+          { x: sox, y },
+          { x: tox, y },
+          { x: tox, y: toy }
+        ];
+      }
+      return [
+        { x: sox, y: soy },
+        { x: sox, y: toy },
+        { x: tox, y: toy }
+      ];
+    }
+    const x = (sx1 + tox) / 2;
+    if (x < sx1 + spacing && sy1 > toy) {
+      const y = Math.max(sy1, ty1) + spacing;
+      const x = Math.min(sourceBBox.x, targetBBox.x) - spacing;
+      return [
+        { x: sox, y },
+        { x, y },
+        { x, y: toy }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: x, y: soy },
+      { x: x, y: toy },
+      { x: tox, y: toy }
+    ];
+  } else if (sourceSide === "left" && targetSide === "bottom") {
+    if (sox > tox) {
+      if (soy < toy) {
+        let x = (sourceBBox.x + tx1) / 2;
+        if (x > tcx && x < tx1 + spacing && soy < targetBBox.y - spacing) {
+          x = Math.max(sx1, tx1) + spacing;
+        }
+        return [
+          { x, y: soy },
+          { x, y: toy },
+          { x: tox, y: toy }
+        ];
+      }
+      return [{ x: tox, y: soy }];
+    }
+    const y = (sourceBBox.y + ty1) / 2;
+    if (y > sourceBBox.y - spacing) {
+      const x = Math.min(sourceBBox.x, targetBBox.x) - spacing;
+      const y = Math.max(sy1, ty1) + spacing;
+      return [
+        { x, y: soy },
+        { x, y },
+        { x: tox, y }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: sox, y: y },
+      { x: tox, y },
+      { x: tox, y: toy }
+    ];
+  } else if (sourceSide === "left" && targetSide === "top") {
+    if (sox > tox) {
+      if (soy > toy) {
+        let x = (sourceBBox.x + tx1) / 2;
+        if (x > tcx && x < tx1 + spacing && soy > ty1 + spacing) {
+          x = Math.max(sx1, tx1) + spacing;
+        }
+        return [
+          { x, y: soy },
+          { x, y: toy },
+          { x: tox, y: toy }
+        ];
+      }
+      return [{ x: tox, y: soy }];
+    }
+    const y = (sy1 + targetBBox.y) / 2;
+    if (y < sy1 + spacing) {
+      const x = Math.min(sourceBBox.x, targetBBox.x) - spacing;
+      const y = Math.min(sourceBBox.y, targetBBox.y) - spacing;
+      return [
+        { x, y: soy },
+        { x, y },
+        { x: tox, y }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: sox, y: y },
+      { x: tox, y },
+      { x: tox, y: toy }
+    ];
+  } else if (sourceSide === "right" && targetSide === "top") {
+    if (sox < tox) {
+      if (soy > toy) {
+        let x = (sx1 + targetBBox.x) / 2;
+        if (x < tcx && x > targetBBox.x - spacing && soy > ty1 + spacing) {
+          x = Math.max(sx1, tx1) + spacing;
+        }
+        return [
+          { x, y: soy },
+          { x, y: toy },
+          { x: tox, y: toy }
+        ];
+      }
+      return [{ x: tox, y: soy }];
+    }
+    const y = (sy1 + targetBBox.y) / 2;
+    if (y < sy1 + spacing) {
+      const x = Math.max(sx1, tx1) + spacing;
+      const y = Math.min(sourceBBox.y, targetBBox.y) - spacing;
+      return [
+        { x, y: soy },
+        { x, y },
+        { x: tox, y }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: sox, y: y },
+      { x: tox, y },
+      { x: tox, y: toy }
+    ];
+  } else if (sourceSide === "right" && targetSide === "bottom") {
+    if (sox < tox) {
+      if (soy < toy) {
+        let x = (sx1 + targetBBox.x) / 2;
+        if (x < tcx && x > targetBBox.x - spacing && soy < targetBBox.y - spacing) {
+          x = Math.min(sourceBBox.x, targetBBox.x) - spacing;
+        }
+        return [
+          { x, y: soy },
+          { x, y: toy },
+          { x: tox, y: toy }
+        ];
+      }
+      return [
+        { x: sox, y: soy },
+        { x: tox, y: soy },
+        { x: tox, y: toy }
+      ];
+    }
+    const y = (sourceBBox.y + ty1) / 2;
+    if (y > sourceBBox.y - spacing) {
+      const x = Math.max(sx1, tx1) + spacing;
+      const y = Math.max(sy1, ty1) + spacing;
+      return [
+        { x, y: soy },
+        { x, y },
+        { x: tox, y }
+      ];
+    }
+    return [
+      { x: sox, y: soy },
+      { x: sox, y: y },
+      { x: tox, y },
+      { x: tox, y: toy }
+    ];
+  }
+  
+  // Fallback para casos no cubiertos
   return [
-    { x: sourceOutsidePoint.x, y: sourceOutsidePoint.y },
-    { x, y },
-    { x: targetOutsidePoint.x, y: targetOutsidePoint.y }
+    sourceOutsidePoint,
+    { x: sourceOutsidePoint.x, y: targetOutsidePoint.y },
+    targetOutsidePoint
   ];
 }
 
@@ -270,7 +629,7 @@ export function getAbsoluteAnchor(coords: joint.g.Point, view: joint.dia.Element
 /**
  * Configuración de herramientas para elementos UML
  */
-export function createElementTools(element: joint.dia.Element) {
+export function createElementTools(element: joint.dia.Element): any[] {
   const tools = [
     new joint.elementTools.Boundary({
       attributes: {
@@ -344,7 +703,7 @@ export function createLabelTools(link: joint.dia.Link) {
 /**
  * Configuración de herramientas para edición de etiquetas
  */
-export function createLabelEditTools(link: joint.dia.Link) {
+export function createLabelEditTools(link: joint.dia.Link): any[] {
   const tools = [
     new joint.linkTools.Remove({
       distance: 20
@@ -357,7 +716,7 @@ export function createLabelEditTools(link: joint.dia.Link) {
 /**
  * Configuración de herramientas para enlaces con etiquetas
  */
-export function createLinkWithLabelsTools(link: joint.dia.Link, element: joint.dia.Element) {
+export function createLinkWithLabelsTools(link: joint.dia.Link, element: joint.dia.Element): any[] {
   const tools = [
     new joint.linkTools.Remove({
       distance: 20
@@ -398,4 +757,376 @@ export function createLinkWithLabelsTools(link: joint.dia.Link, element: joint.d
   }
   
   return tools;
+}
+
+/**
+ * Configuración por defecto para enlaces UML
+ */
+export const UML_LINK_CONFIG = {
+  z: 1,
+  connector: { 
+    name: 'rounded',
+    args: { radius: 15 }
+  },
+  router: orthogonalRouter,
+  connectionPoint: {
+    name: 'boundary',
+    args: {
+      sticky: true,
+      offset: 3,
+      priority: ['right', 'left', 'top', 'bottom']
+    }
+  },
+  defaultLabel: {
+    markup: [
+      { tagName: 'rect', selector: 'body' },
+      { tagName: 'text', selector: 'label' }
+    ],
+    attrs: {
+      text: {
+        text: '',
+        'font-size': 16,
+        'text-anchor': 'middle',
+        'y-alignment': 'middle',
+        'fill': '#000000',
+        'font-family': 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        'font-weight': '500'
+      },
+      body: {
+        fill: '#ffffff',
+        stroke: '#000000',
+        'stroke-width': 1,
+        rx: 4,
+        ry: 4,
+        padding: 8
+      }
+    },
+    position: {
+      distance: 0.5,
+      args: {
+        keepGradient: true,
+        ensureLegibility: true
+      }
+    }
+  }
+} as const;
+
+/**
+ * Configuración de marcadores para diferentes tipos de enlaces
+ */
+export const UML_MARKERS = {
+  base: {
+    stroke: "#000000",
+    'stroke-width': 1,
+    'stroke-linecap': 'round',
+    'stroke-linejoin': 'round'
+  },
+  generalization: {
+    targetMarker: { 
+      type: "path", 
+      d: "M 7 -4 0 0 7 4", 
+      fill: "none", 
+      stroke: "#000000", 
+      'stroke-width': 1 
+    }
+  },
+  aggregation: {
+    sourceMarker: { 
+      type: "path", 
+      d: "M 10 -4 0 0 10 4 20 0 z", 
+      fill: "#ffffff", 
+      stroke: "#000000", 
+      'stroke-width': 1 
+    },
+    targetMarker: { 
+      type: "path", 
+      d: "M 7 -4 0 0 7 4", 
+      fill: "none",
+      stroke: "#000000",
+      'stroke-width': 1
+    }
+  },
+  composition: {
+    sourceMarker: { 
+      type: "path", 
+      d: "M 10 -4 0 0 10 4 20 0 z", 
+      fill: "#000000", 
+      stroke: "#000000", 
+      'stroke-width': 1 
+    },
+    targetMarker: { 
+      type: "path", 
+      d: "M 7 -4 0 0 7 4", 
+      fill: "none",
+      stroke: "#000000",
+      'stroke-width': 1
+    }
+  },
+  dependency: {
+    strokeDasharray: "5,3",
+    targetMarker: { 
+      type: "path", 
+      d: "M 7 -4 0 0 7 4", 
+      fill: "none",
+      stroke: "#000000",
+      'stroke-width': 1
+    }
+  },
+  association: {
+    targetMarker: { 
+      type: "path", 
+      d: "M 7 -4 0 0 7 4", 
+      fill: "none",
+      stroke: "#000000",
+      'stroke-width': 1
+    }
+  }
+} as const;
+
+/**
+ * Obtiene los datos de un enlace desde una celda
+ */
+export function getLinkDataFromCell(cell: any): LinkData | null {
+  if (!cell?.isLink?.()) return null;
+  const id = cell.id as string;
+  const type = cell.get?.("type") as string | undefined;
+  let kind: LinkData["kind"] = "standard";
+  if (type?.startsWith("uml.")) {
+    if (type === "uml.Association") kind = "assoc";
+    else if (type === "uml.Aggregation") kind = "aggregation";
+    else if (type === "uml.Composition") kind = "composition";
+    else if (type === "uml.Dependency") kind = "dependency";
+    else if (type === "uml.Generalization") kind = "generalization";
+  }
+  
+  // Obtener todos los labels y mapearlos por su tipo
+  const labels = (cell.get("labels") || []) as Array<{id?: string, attrs?: any}>;
+  
+  // Función para encontrar un label por su id
+  const findLabel = (id: string) => {
+    const label = labels.find(l => l.id === id);
+    return label?.attrs?.text?.text;
+  };
+  
+  return {
+    id,
+    kind,
+    sourceMultiplicity: findLabel('source-multiplicity'),
+    targetMultiplicity: findLabel('target-multiplicity'),
+    sourceRole: findLabel('source-role'),
+    targetRole: findLabel('target-role')
+  };
+}
+
+/**
+ * Aplica datos a una celda de enlace
+ */
+export function applyLinkDataToCell(cell: any, data: Partial<LinkData>) {
+  if (!cell?.isLink?.()) return;
+  
+  try {
+    const labels: any[] = [];
+    
+    if (data.sourceMultiplicity) {
+      labels.push({
+        id: 'source-multiplicity',
+        position: 0.1,
+        attrs: {
+          text: {
+            text: data.sourceMultiplicity,
+            fill: '#000000',
+            fontSize: 16,
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontWeight: '500',
+            textAnchor: 'middle',
+            yAlignment: 'middle'
+          },
+          body: {
+            fill: '#ffffff',
+            stroke: '#000000',
+            'stroke-width': 1,
+            rx: 4,
+            ry: 4,
+            padding: 8
+          }
+        }
+      });
+    }
+    
+    if (data.targetMultiplicity) {
+      labels.push({
+        id: 'target-multiplicity',
+        position: 0.9,
+        attrs: {
+          text: {
+            text: data.targetMultiplicity,
+            fill: '#000000',
+            fontSize: 16,
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontWeight: '500',
+            textAnchor: 'middle',
+            yAlignment: 'middle'
+          },
+          body: {
+            fill: '#ffffff',
+            stroke: '#000000',
+            'stroke-width': 1,
+            rx: 4,
+            ry: 4,
+            padding: 8
+          }
+        }
+      });
+    }
+    
+    if (data.sourceRole) {
+      labels.push({
+        id: 'source-role',
+        position: 0.1,
+        attrs: {
+          text: {
+            text: data.sourceRole,
+            fill: '#000000',
+            fontSize: 16,
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontWeight: '500',
+            textAnchor: 'middle',
+            yAlignment: 'middle'
+          },
+          body: {
+            fill: '#ffffff',
+            stroke: '#000000',
+            'stroke-width': 1,
+            rx: 4,
+            ry: 4,
+            padding: 8
+          }
+        }
+      });
+    }
+    
+    if (data.targetRole) {
+      labels.push({
+        id: 'target-role',
+        position: 0.9,
+        attrs: {
+          text: {
+            text: data.targetRole,
+            fill: '#000000',
+            fontSize: 16,
+            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontWeight: '500',
+            textAnchor: 'middle',
+            yAlignment: 'middle'
+          },
+          body: {
+            fill: '#ffffff',
+            stroke: '#000000',
+            'stroke-width': 1,
+            rx: 4,
+            ry: 4,
+            padding: 8
+          }
+        }
+      });
+    }
+    
+    if (labels.length > 0) {
+      cell.set('labels', labels);
+    }
+    
+    // Asegurar que el link sea seleccionable
+    cell.set('selectable', true);
+    cell.set('interactive', true);
+  } catch (error) {
+    console.error('Error en applyLinkDataToCell:', error, { cell, data });
+  }
+}
+
+/**
+ * Crea un enlace UML entre dos elementos
+ */
+export function createUmlLink(kind: LinkToolKind, graph: joint.dia.Graph, sourceId: string, targetId: string) {
+  if (sourceId === targetId) return;
+  const umlNs: any = (joint.shapes as any).uml;
+  try {
+    let link: any;
+
+    if (umlNs) {
+      const baseOptions = { 
+        source: { id: sourceId }, 
+        target: { id: targetId }, 
+        ...UML_LINK_CONFIG 
+      };
+      
+      if (kind === "assoc") { 
+        link = new umlNs.Association(baseOptions); 
+      } else if (kind === "aggregation") { 
+        link = new umlNs.Aggregation(baseOptions); 
+      } else if (kind === "composition") { 
+        link = new umlNs.Composition(baseOptions); 
+      } else if (kind === "dependency") { 
+        if (umlNs.Dependency) { 
+          link = new umlNs.Dependency(baseOptions); 
+        } 
+      } else if (kind === "generalization") { 
+        link = new umlNs.Generalization(baseOptions); 
+      }
+    }
+    
+    if (!link) {
+      // Fallback para tipos no soportados
+      const base: any = { 
+        stroke: "#000000", 
+        'stroke-width': 1, 
+        'stroke-linecap': 'round', 
+        'stroke-linejoin': 'round' 
+      };
+      
+      let targetMarker: any = { 
+        type: "path", 
+        d: "M 7 -4 0 0 7 4", 
+        fill: "none",
+        stroke: "#000000",
+        'stroke-width': 1
+      };
+      let sourceMarker: any | undefined;
+      let strokeDasharray: string | undefined;
+
+      if (kind === "generalization") {
+        targetMarker = UML_MARKERS.generalization.targetMarker;
+      } else if (kind === "aggregation") {
+        sourceMarker = UML_MARKERS.aggregation.sourceMarker;
+        targetMarker = UML_MARKERS.aggregation.targetMarker;
+      } else if (kind === "composition") {
+        sourceMarker = UML_MARKERS.composition.sourceMarker;
+        targetMarker = UML_MARKERS.composition.targetMarker;
+      } else if (kind === "dependency") {
+        strokeDasharray = UML_MARKERS.dependency.strokeDasharray;
+        targetMarker = UML_MARKERS.dependency.targetMarker;
+      } else if (kind === "assoc") {
+        targetMarker = UML_MARKERS.association.targetMarker;
+      }
+
+      link = new joint.dia.Link({
+        source: { id: sourceId },
+        target: { id: targetId },
+        attrs: {
+          line: {
+            ...UML_MARKERS.base,
+            strokeDasharray: strokeDasharray,
+            targetMarker: targetMarker,
+            sourceMarker: sourceMarker
+          }
+        },
+        ...UML_LINK_CONFIG
+      });
+    }
+    
+    link.addTo(graph);
+    return link;
+  } catch (e) {
+    console.error("createUmlLink error", e);
+    return null;
+  }
 }

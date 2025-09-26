@@ -19,6 +19,9 @@ const io = new Server(server, {
 // In-memory state per room (cache). Persisted to MongoDB.
 const roomState = new Map(); // diagramId -> { json: object, version: number, updatedAt: number }
 
+// Track connected users per room
+const roomUsers = new Map(); // diagramId -> Set of socketIds
+
 // Mongo schema/model
 const diagramSchema = new mongoose.Schema(
   {
@@ -42,6 +45,19 @@ io.on('connection', (socket) => {
     if (!diagramId) return;
     socket.join(diagramId);
 
+    // Track user in room
+    if (!roomUsers.has(diagramId)) {
+      roomUsers.set(diagramId, new Set());
+    }
+    roomUsers.get(diagramId).add(socket.id);
+
+    // Notify all users in room about new user
+    const userCount = roomUsers.get(diagramId).size;
+    io.to(diagramId).emit('room:users', { 
+      users: Array.from(roomUsers.get(diagramId)), 
+      count: userCount 
+    });
+
     // send current state to the new client (from cache or DB)
     (async () => {
       try {
@@ -61,6 +77,29 @@ io.on('connection', (socket) => {
         console.error('[socket] room:join load error', err);
       }
     })();
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    // Remove user from all rooms
+    for (const [diagramId, users] of roomUsers.entries()) {
+      if (users.has(socket.id)) {
+        users.delete(socket.id);
+        const userCount = users.size;
+        
+        // Notify remaining users
+        io.to(diagramId).emit('room:users', { 
+          users: Array.from(users), 
+          count: userCount 
+        });
+
+        // Clean up empty room
+        if (users.size === 0) {
+          roomUsers.delete(diagramId);
+        }
+        break;
+      }
+    }
   });
 
   // Receive full graph JSON updates (naive approach)
@@ -94,6 +133,12 @@ io.on('connection', (socket) => {
   socket.on('cursor', ({ diagramId, cursor, clientId }) => {
     if (!diagramId) return;
     socket.to(diagramId).emit('cursor', { cursor, clientId });
+  });
+
+  // Selection sharing - when user selects/deselects elements
+  socket.on('selection', ({ diagramId, selection, clientId }) => {
+    if (!diagramId) return;
+    socket.to(diagramId).emit('selection', { selection, clientId });
   });
 });
 
