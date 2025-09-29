@@ -50,6 +50,11 @@ async function ensureDb() {
 io.on('connection', (socket) => {
   console.log(`[socket] New client connected: ${socket.id}`);
   
+  // Manejo de errores del socket
+  socket.on('error', (error) => {
+    console.error(`[socket] Socket error for ${socket.id}:`, error);
+  });
+  
   // Join a room for a given diagramId
   socket.on('room:join', ({ diagramId }) => {
     if (!diagramId) return;
@@ -157,11 +162,15 @@ io.on('connection', (socket) => {
 server.on('request', (req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+    res.end(JSON.stringify({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(),
+      port: PORT,
+      environment: process.env.NODE_ENV || 'development'
+    }));
     return;
   }
-  res.writeHead(404);
-  res.end();
+  // Para todas las demás rutas, no responder (dejar que Socket.IO maneje)
 });
 
 server.listen(PORT, () => {
@@ -169,4 +178,14 @@ server.listen(PORT, () => {
   console.log(`[socket] environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`[socket] MongoDB URI: ${MONGO_URL ? 'configured' : 'not configured'}`);
   console.log(`[socket] CORS origin: ${process.env.NODE_ENV === 'production' ? 'all origins' : 'localhost only'}`);
+});
+
+// Manejo de errores del servidor
+server.on('error', (error) => {
+  console.error('[socket] Server error:', error);
+});
+
+// Manejo de errores de Socket.IO
+io.on('error', (error) => {
+  console.error('[socket] Socket.IO error:', error);
 });
