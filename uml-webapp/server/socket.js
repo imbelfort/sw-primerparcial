@@ -11,14 +11,7 @@ const MONGO_URL = process.env.MONGODB_URI || process.env.MONGO_URL || 'mongodb:/
 const server = http.createServer();
 const io = new Server(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' 
-      ? [
-          process.env.RENDER_EXTERNAL_URL, 
-          process.env.FRONTEND_URL,
-          'https://uml-webapp.onrender.com',
-          'https://*.onrender.com'
-        ]
-      : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: true, // Permitir todos los orígenes temporalmente
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -44,10 +37,19 @@ const Diagram = mongoose.models.Diagram || mongoose.model('Diagram', diagramSche
 
 async function ensureDb() {
   if (mongoose.connection.readyState === 1) return;
-  await mongoose.connect(MONGO_URL, { dbName: 'uml' });
+  try {
+    console.log('[socket] Connecting to MongoDB...');
+    await mongoose.connect(MONGO_URL, { dbName: 'uml' });
+    console.log('[socket] MongoDB connected successfully');
+  } catch (error) {
+    console.error('[socket] MongoDB connection error:', error);
+    throw error;
+  }
 }
 
 io.on('connection', (socket) => {
+  console.log(`[socket] New client connected: ${socket.id}`);
+  
   // Join a room for a given diagramId
   socket.on('room:join', ({ diagramId }) => {
     if (!diagramId) return;
@@ -89,6 +91,7 @@ io.on('connection', (socket) => {
 
   // Handle disconnection
   socket.on('disconnect', () => {
+    console.log(`[socket] Client disconnected: ${socket.id}`);
     // Remove user from all rooms
     for (const [diagramId, users] of roomUsers.entries()) {
       if (users.has(socket.id)) {
@@ -164,4 +167,6 @@ server.on('request', (req, res) => {
 server.listen(PORT, () => {
   console.log(`[socket] listening on port ${PORT}`);
   console.log(`[socket] environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`[socket] MongoDB URI: ${MONGO_URL ? 'configured' : 'not configured'}`);
+  console.log(`[socket] CORS origin: ${process.env.NODE_ENV === 'production' ? 'all origins' : 'localhost only'}`);
 });
