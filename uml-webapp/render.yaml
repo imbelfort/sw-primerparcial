@@ -1,0 +1,43 @@
+services:
+  # Servicio principal de Next.js
+  - type: web
+    name: uml-webapp
+    env: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        fromDatabase:
+          name: mongodb-atlas
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+    healthCheckPath: /
+    autoDeploy: true
+
+  # Servicio de Socket.IO
+  - type: web
+    name: uml-socket-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server/socket.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SOCKET_PORT
+        value: 10000
+      - key: MONGODB_URI
+        fromDatabase:
+          name: mongodb-atlas
+          property: connectionString
+    healthCheckPath: /health
+    autoDeploy: true
+
+databases:
+  - name: mongodb-atlas
+    plan: free
+    # Render se conectará a tu MongoDB Atlas existente

@@ -19,14 +19,19 @@ export function useSocketIO(
   useEffect(() => {
     if (!diagramId) return;
 
-    const socket = io("http://localhost:3001", {
-      transports: ["polling", "websocket"],
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 500,
-      reconnectionDelayMax: 3000,
-      timeout: 20000,
-    });
+    const socket = io(
+      process.env.NODE_ENV === 'production' 
+        ? process.env.NEXT_PUBLIC_SOCKET_URL || 'https://tu-socket-server.onrender.com'
+        : "http://localhost:3001", 
+      {
+        transports: ["polling", "websocket"],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 3000,
+        timeout: 20000,
+      }
+    );
     socketRef.current = socket;
 
     socket.on("connect", () => {

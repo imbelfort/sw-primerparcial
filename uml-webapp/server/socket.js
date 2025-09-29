@@ -5,13 +5,15 @@ const http = require('http');
 const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 
-const PORT = process.env.SOCKET_PORT || 3001;
-const MONGO_URL = process.env.MONGO_URL || 'mongodb://root:example@localhost:27017/?authSource=admin';
+const PORT = process.env.SOCKET_PORT || process.env.PORT || 3001;
+const MONGO_URL = process.env.MONGODB_URI || process.env.MONGO_URL || 'mongodb://root:example@localhost:27017/?authSource=admin';
 
 const server = http.createServer();
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: process.env.NODE_ENV === 'production' 
+      ? [process.env.RENDER_EXTERNAL_URL, process.env.FRONTEND_URL]
+      : ['http://localhost:3000', 'http://127.0.0.1:3000'],
     methods: ['GET', 'POST']
   }
 });
@@ -142,6 +144,18 @@ io.on('connection', (socket) => {
   });
 });
 
+// Health check endpoint
+server.on('request', (req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }));
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
+
 server.listen(PORT, () => {
-  console.log(`[socket] listening on http://localhost:${PORT}`);
+  console.log(`[socket] listening on port ${PORT}`);
+  console.log(`[socket] environment: ${process.env.NODE_ENV || 'development'}`);
 });
