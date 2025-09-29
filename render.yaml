@@ -4,8 +4,8 @@ services:
     name: uml-webapp
     env: node
     plan: free
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: cd uml-webapp && npm install && npm run build
+    startCommand: cd uml-webapp && npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -23,8 +23,8 @@ services:
     name: uml-socket-server
     env: node
     plan: free
-    buildCommand: npm install
-    startCommand: node server/socket.js
+    buildCommand: cd uml-webapp && npm install
+    startCommand: cd uml-webapp && node server/socket.js
     envVars:
       - key: NODE_ENV
         value: production

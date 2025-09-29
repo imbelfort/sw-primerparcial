@@ -41,7 +41,7 @@
    | `FRONTEND_URL` | `https://tu-app.onrender.com` | URL de tu aplicación en producción |
 
 3. **Desplegar**:
-   - Render detectará automáticamente el archivo `render.yaml`
+   - Render detectará automáticamente el archivo `render.yaml` en la raíz
    - Creará dos servicios: la app Next.js y el servidor Socket.IO
 
 ### Opción 2: Despliegue Manual
@@ -51,6 +51,7 @@
    - Click en "New" → "Web Service"
    - Conecta tu repositorio
    - Configuración:
+     - **Root Directory**: `uml-webapp`
      - **Build Command**: `npm install && npm run build`
      - **Start Command**: `npm start`
      - **Environment**: `Node`
@@ -68,6 +69,7 @@
    - Click en "New" → "Web Service"
    - Conecta tu repositorio
    - Configuración:
+     - **Root Directory**: `uml-webapp`
      - **Build Command**: `npm install`
      - **Start Command**: `node server/socket.js`
      - **Environment**: `Node`
@@ -84,7 +86,7 @@
 Actualiza el hook `useSocketIO.ts` para usar la URL de producción:
 
 ```typescript
-// En src/hooks/useSocketIO.ts
+// En uml-webapp/src/hooks/useSocketIO.ts
 const socket = io(
   process.env.NODE_ENV === 'production' 
     ? 'https://tu-socket-server.onrender.com' 
@@ -103,14 +105,14 @@ const socket = io(
 ## 📁 Archivos Creados/Modificados
 
 ### ✅ Archivos Nuevos
-- `render.yaml` - Configuración de despliegue automático
+- `render.yaml` - Configuración de despliegue automático (en la raíz)
 - `Dockerfile` - Imagen Docker para Render
 - `RENDER_DEPLOYMENT.md` - Esta guía
 
 ### ✅ Archivos Modificados
-- `server/socket.js` - Configuración para Render
-- `next.config.ts` - Output standalone para Render
-- `package.json` - Scripts de build
+- `uml-webapp/server/socket.js` - Configuración para Render
+- `uml-webapp/next.config.ts` - Output standalone para Render
+- `uml-webapp/package.json` - Scripts de build
 
 ## 🐛 Solución de Problemas
 
