@@ -5,9 +5,10 @@
   "scripts": {
     "dev": "next dev --turbopack",
     "dev:all": "concurrently \"next dev --turbopack\" \"node server/socket.js\"",
-    "build": "next build --turbopack",
+    "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "vercel-build": "next build"
   },
   "dependencies": {
     "@types/jszip": "^3.4.0",
