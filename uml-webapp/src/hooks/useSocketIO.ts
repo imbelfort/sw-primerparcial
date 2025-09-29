@@ -21,7 +21,7 @@ export function useSocketIO(
 
     const socket = io(
       process.env.NODE_ENV === 'production' 
-        ? process.env.NEXT_PUBLIC_SOCKET_URL || 'https://tu-socket-server.onrender.com'
+        ? process.env.NEXT_PUBLIC_SOCKET_URL || 'https://uml-socket-server.onrender.com'
         : "http://localhost:3001", 
       {
         transports: ["polling", "websocket"],
