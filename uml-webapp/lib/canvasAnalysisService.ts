@@ -89,7 +89,7 @@ export class CanvasAnalysisService {
   private static analyzeElement(cell: joint.dia.Cell): CanvasElement | null {
     try {
       const position = cell.position();
-      const size = cell.size();
+      const bbox = cell.getBBox();
       const type = cell.get('type') || '';
       
       // Determinar el tipo de elemento
@@ -112,7 +112,7 @@ export class CanvasAnalysisService {
         attributes: Array.isArray(attributes) ? attributes : [],
         methods: Array.isArray(methods) ? methods : [],
         position: { x: position.x, y: position.y },
-        size: { width: size.width, height: size.height }
+        size: { width: bbox.width, height: bbox.height }
       };
     } catch (error) {
       console.warn('Error al analizar elemento:', error);
