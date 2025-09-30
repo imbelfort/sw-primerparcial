@@ -6,9 +6,32 @@ import { getLinkDataFromCell } from '../../lib/umlTools';
 // Hook para manejar el estado del diagrama
 export function useDiagramState() {
   const [tool, setTool] = useState<Tool>("select");
+  
+  // Log cuando cambia la herramienta
+  useEffect(() => {
+    console.log('🔍 [SELECT] Herramienta cambiada a:', tool);
+  }, [tool]);
   const [linkSourceId, setLinkSourceId] = useState<string | null>(null);
   const [selected, setSelected] = useState<ClassData | null>(null);
   const [linkSelected, setLinkSelected] = useState<ReturnType<typeof getLinkDataFromCell> | null>(null);
+  
+  // Log cuando cambia la selección de elemento
+  useEffect(() => {
+    if (selected) {
+      console.log('🔍 [SELECT] Elemento seleccionado:', selected);
+    } else {
+      console.log('🔍 [SELECT] Elemento deseleccionado');
+    }
+  }, [selected]);
+  
+  // Log cuando cambia la selección de enlace
+  useEffect(() => {
+    if (linkSelected) {
+      console.log('🔍 [SELECT] Enlace seleccionado:', linkSelected);
+    } else {
+      console.log('🔍 [SELECT] Enlace deseleccionado');
+    }
+  }, [linkSelected]);
   const [pendingLinkAnchor, setPendingLinkAnchor] = useState<{ x: number; y: number } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ visible: boolean; x: number; y: number; cellId: string | null }>({
     visible: false,

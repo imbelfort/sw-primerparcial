@@ -13,7 +13,8 @@ export function LinkInspector({
   onClear: () => void;
 }) {
   const [formData, setFormData] = useState({
-    label: "",
+    sourceRole: "",
+    targetRole: "",
     sourceMultiplicity: "",
     targetMultiplicity: ""
   });
@@ -21,7 +22,8 @@ export function LinkInspector({
   useEffect(() => {
     if (!selected) {
       setFormData({
-        label: "",
+        sourceRole: "",
+        targetRole: "",
         sourceMultiplicity: "",
         targetMultiplicity: ""
       });
@@ -30,7 +32,8 @@ export function LinkInspector({
     
     // Inicializamos con los valores correctos del enlace seleccionado
     setFormData({
-      label: selected.sourceRole || "",
+      sourceRole: selected.sourceRole || "",
+      targetRole: selected.targetRole || "",
       sourceMultiplicity: selected.sourceMultiplicity || "",
       targetMultiplicity: selected.targetMultiplicity || ""
     });
@@ -45,8 +48,10 @@ export function LinkInspector({
     const update: Partial<LinkData> = {};
     
     // Mapeamos los campos del formulario a los campos correctos de LinkData
-    if (field === 'label') {
+    if (field === 'sourceRole') {
       update.sourceRole = value;
+    } else if (field === 'targetRole') {
+      update.targetRole = value;
     } else if (field === 'sourceMultiplicity') {
       update.sourceMultiplicity = value;
     } else if (field === 'targetMultiplicity') {
@@ -105,34 +110,71 @@ export function LinkInspector({
       </div>
 
       <div className="space-y-6">
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Nombre de la relación</label>
-          <input
-            value={formData.label}
-            onChange={(e) => handleChange('label', e.target.value)}
-            placeholder="Ej: Cliente - Pedido"
-            className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Rol Origen</label>
+            <input
+              value={formData.sourceRole}
+              onChange={(e) => handleChange('sourceRole', e.target.value)}
+              placeholder="Ej: cliente"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700">Rol Destino</label>
+            <input
+              value={formData.targetRole}
+              onChange={(e) => handleChange('targetRole', e.target.value)}
+              placeholder="Ej: pedidos"
+              className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
         </div>
         
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Multiplicidad Origen</label>
-            <input
+            <select
               value={formData.sourceMultiplicity}
               onChange={(e) => handleChange('sourceMultiplicity', e.target.value)}
-              placeholder="Ej: 1, 0..*"
               className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-            />
+            >
+              <option value="">Sin multiplicidad</option>
+              <option value="1">1</option>
+              <option value="0..1">0..1</option>
+              <option value="0..*">0..*</option>
+              <option value="1..*">1..*</option>
+              <option value="*">*</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="n">n</option>
+              <option value="m">m</option>
+              <option value="k">k</option>
+            </select>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">Multiplicidad Destino</label>
-            <input
+            <select
               value={formData.targetMultiplicity}
               onChange={(e) => handleChange('targetMultiplicity', e.target.value)}
-              placeholder="Ej: 0..*, 1"
               className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-            />
+            >
+              <option value="">Sin multiplicidad</option>
+              <option value="1">1</option>
+              <option value="0..1">0..1</option>
+              <option value="0..*">0..*</option>
+              <option value="1..*">1..*</option>
+              <option value="*">*</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="n">n</option>
+              <option value="m">m</option>
+              <option value="k">k</option>
+            </select>
           </div>
         </div>
       </div>

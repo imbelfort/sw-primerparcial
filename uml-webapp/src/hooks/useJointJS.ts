@@ -49,7 +49,8 @@ export function useJointJS(
         args: {
           sticky: true,
           offset: 3,
-          priority: ['right', 'left', 'top', 'bottom']
+          priority: ['right', 'left', 'top', 'bottom'],
+          selector: 'body'
         }
       },
       defaultConnector: { 
@@ -67,11 +68,19 @@ export function useJointJS(
             'stroke-linejoin': 'round'
           } 
         },
-        router: orthogonalRouter
+        router: {
+          name: 'orthogonal',
+          args: {
+            padding: 20,
+            step: 20
+          }
+        }
       },
       snapLinks: { radius: 75 },
       linkPinning: false,
       interactive: true,
+      // Deshabilitar herramientas de enlaces por defecto
+      linkTools: false,
       // Configurar el orden de capas para que los nodos estén por encima de los links
       // defaultLink: { z: 1 },
       // defaultElement: { z: 10 },
@@ -114,6 +123,7 @@ export function useJointJS(
         cell.set('z', 1);
         cell.set('selectable', true);
         cell.set('interactive', true);
+        cell.set('movable', false); // Deshabilitar movimiento de enlaces
         
         // Aplicar router personalizado a todos los enlaces
         cell.set('router', orthogonalRouter);
@@ -169,6 +179,7 @@ export function useJointJS(
         // Solo aplicar si no tiene el router correcto para evitar parpadeo
         if (link.get('router') !== orthogonalRouter) {
           link.set('router', orthogonalRouter);
+          link.set('movable', false); // Deshabilitar movimiento de enlaces
           // También aplicar la configuración completa de UML_LINK_CONFIG
           link.set('connectionPoint', {
             name: 'boundary',
@@ -187,6 +198,7 @@ export function useJointJS(
       if (cell.isLink && cell.isLink()) {
         // Aplicar inmediatamente sin timeout para evitar parpadeo
         cell.set('router', orthogonalRouter);
+        cell.set('movable', false); // Deshabilitar movimiento de enlaces
         cell.set('connectionPoint', {
           name: 'boundary',
           args: {
@@ -236,16 +248,19 @@ export function useJointJS(
       
       // Solo deseleccionar elementos cuando se hace clic en el canvas
       if (currentTool === "select") {
+        console.log('🔍 [SELECT] Deseleccionando elementos');
         onElementSelect(null);
         // Enviar deselección
         const currentSendSelection = sendSelection || (paper as any)?.updateSendSelection;
         if (currentSendSelection) {
+          console.log('🔍 [SELECT] Enviando deselección');
           currentSendSelection(null);
         }
       }
       
       // Cancelar creación de enlaces si hay un linkSource activo
       if (linkSourceRef.current) {
+        console.log('🔍 [SELECT] Cancelando creación de enlace');
         onLinkSourceChange(null);
         onPendingAnchorChange(null);
       }
@@ -289,37 +304,60 @@ export function useJointJS(
       }
       
       if (currentTool === "select") {
+        console.log('🔍 [SELECT] Herramienta de selección activada');
         const model = cellView?.model;
-        if (!model) return;
+        if (!model) {
+          console.log('🔍 [SELECT] No hay modelo en cellView');
+          return;
+        }
+        
         const isLink = model.isLink?.() || model.get?.("type")?.includes("Link");
+        console.log('🔍 [SELECT] Tipo de elemento:', isLink ? 'enlace' : 'elemento', 'ID:', model.id);
+        
         if (isLink) {
+          console.log('🔍 [SELECT] Procesando selección de enlace');
           const ld = getLinkDataFromCell(model);
+          console.log('🔍 [SELECT] Datos del enlace:', ld);
           onLinkSelect(ld);
+          
           // Enviar selección de enlace
           const currentSendSelection = sendSelection || (paper as any)?.updateSendSelection;
           if (currentSendSelection) {
+            console.log('🔍 [SELECT] Enviando selección de enlace:', { cellId: model.id, type: 'link' });
             currentSendSelection({ cellId: model.id, type: 'link' });
           }
           return;
         }
+        
+        console.log('🔍 [SELECT] Procesando selección de elemento');
         const data = getClassDataFromCell(model);
+        console.log('🔍 [SELECT] Datos del elemento:', data);
+        
         if (data) {
           onElementSelect(data);
           // Enviar selección de clase
           const currentSendSelection = sendSelection || (paper as any)?.updateSendSelection;
           if (currentSendSelection) {
+            console.log('🔍 [SELECT] Enviando selección de clase:', { cellId: model.id, type: 'class' });
             currentSendSelection({ cellId: model.id, type: 'class' });
           }
+        } else {
+          console.log('🔍 [SELECT] No se pudieron obtener datos del elemento');
         }
       }
     };
 
     const onCellContextMenu = (cellView: any, evt: MouseEvent) => {
+      console.log('🔍 [SELECT] Menú contextual activado');
       evt.preventDefault();
       const container = containerRef.current;
-      if (!container) return;
+      if (!container) {
+        console.log('🔍 [SELECT] No hay contenedor para el menú contextual');
+        return;
+      }
       const rect = container.getBoundingClientRect();
       const id = cellView?.model?.id as string | undefined;
+      console.log('🔍 [SELECT] Mostrando menú contextual para elemento:', id);
       onContextMenu({
         visible: true,
         x: Math.max(0, evt.clientX - rect.left),
@@ -329,12 +367,14 @@ export function useJointJS(
     };
 
     const onBlankContextMenu = (evt: MouseEvent) => {
+      console.log('🔍 [SELECT] Menú contextual en área en blanco');
       evt.preventDefault();
       onContextMenu({ visible: false, x: 0, y: 0, cellId: null });
     };
 
     // Event handlers para herramientas avanzadas
     const onElementPointerClick = (elementView: any) => {
+      console.log('🔍 [SELECT] Clic en elemento:', elementView?.model?.id);
       // Remover herramientas existentes
       paper.removeTools();
       
@@ -342,37 +382,49 @@ export function useJointJS(
       
       // Agregar herramientas al elemento
       const elementTools = createElementTools(element);
+      console.log('🔍 [SELECT] Herramientas del elemento:', elementTools.length);
       const elementToolsView = new joint.dia.ToolsView({ tools: elementTools });
       elementView.addTools(elementToolsView);
+      console.log('🔍 [SELECT] Herramientas agregadas al elemento');
       
       // Agregar herramientas a los enlaces conectados
       const connectedLinks = graph.getConnectedLinks(element);
+      console.log('🔍 [SELECT] Enlaces conectados:', connectedLinks.length);
       connectedLinks.forEach((link: any) => {
         const linkView = paper.findViewByModel(link);
         if (linkView) {
           const linkTools = createLinkWithLabelsTools(link, element);
           const linkToolsView = new joint.dia.ToolsView({ tools: linkTools });
           linkView.addTools(linkToolsView);
+          console.log('🔍 [SELECT] Herramientas agregadas al enlace:', link.id);
         }
       });
     };
 
     const onLinkPointerClick = (linkView: any) => {
+      console.log('🔍 [SELECT] Clic en enlace:', linkView?.model?.id);
       // Remover herramientas existentes
       paper.removeTools();
       
       const link = linkView.model;
       
-      // Agregar herramientas al enlace
-      const linkTools = createLabelEditTools(link);
-      const linkToolsView = new joint.dia.ToolsView({ tools: linkTools });
-      linkView.addTools(linkToolsView);
+      // NO agregar herramientas al enlace - solo seleccionar para editar en el inspector
+      // Las herramientas de JointJS permiten mover el enlace, lo cual no queremos
       
       // Actualizar posicionamiento de etiquetas
       updateLabelsTextAnchor(link);
+      console.log('🔍 [SELECT] Etiquetas actualizadas');
+      
+      // Asegurar que el enlace sea seleccionable pero no movible
+      link.set('selectable', true);
+      link.set('interactive', true);
+      link.set('movable', false); // Deshabilitar movimiento del enlace
+      
+      console.log('🔍 [SELECT] Enlace seleccionado para edición en inspector (sin herramientas de movimiento)');
     };
 
     const onBlankPointerDownAdvanced = () => {
+      console.log('🔍 [SELECT] Clic en área en blanco - removiendo herramientas');
       // Remover herramientas cuando se hace clic en el fondo
       paper.removeTools();
     };

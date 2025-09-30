@@ -31,6 +31,8 @@ Formato de respuesta OBLIGATORIO:
           "type": "generalization|association|composition|aggregation|dependency",
           "target": "ClaseDestino",
           "label": "nombre descriptivo de la relación",
+          "sourceRole": "rol del elemento origen",
+          "targetRole": "rol del elemento destino",
           "multiplicity": "1|0..1|1..*|0..*|*",
           "sourceMultiplicity": "1|0..1|1..*|0..*|*"
         }
@@ -55,10 +57,21 @@ Multiplicidades comunes:
 - "*": muchos
 
 Ejemplos de relaciones:
-- Usuario "tiene" Perfil (composición: 1 a 1)
-- Cliente "compra" Producto (asociación: 1 a muchos)
-- Empleado "es un" Persona (generalización)
-- Orden "usa" ServicioPago (dependencia)
+- Usuario "tiene" Perfil (composición: 1 a 1, sourceRole: "usuario", targetRole: "perfil")
+- Cliente "compra" Producto (asociación: 1 a muchos, sourceRole: "cliente", targetRole: "productos")
+- Empleado "es un" Persona (generalización, sourceRole: "empleado", targetRole: "persona")
+- Orden "usa" ServicioPago (dependencia, sourceRole: "orden", targetRole: "servicio")
+
+IMPORTANTE sobre roles:
+- sourceRole: describe el rol del elemento origen en la relación
+- targetRole: describe el rol del elemento destino en la relación
+- Usa nombres descriptivos y en minúsculas (ej: "cliente", "productos", "usuario")
+
+REGLAS CRÍTICAS para relaciones:
+1. SOLO define la relación desde UNA dirección (no bidireccional)
+2. Si A se relaciona con B, NO definas también B relacionándose con A
+3. Elige la dirección más natural (ej: Cliente "compra" Producto, no Producto "es comprado por" Cliente)
+4. Para relaciones simétricas, define solo una vez
 
 IMPORTANTE: El JSON debe estar en un bloque de código markdown y ser el último elemento de tu respuesta.`;
 
@@ -320,7 +333,7 @@ function repairJson(jsonStr: string): string | null {
     
     // Reparar comas faltantes en objetos
     repaired = repaired.replace(/"\s*"/g, '", "');
-    repaired = repaired.replace(/}\s*{/g, '}, {');
+    repaired = repaired.replace(/}\s*{/g, '}, {'); 
     repaired = repaired.replace(/]\s*\[/g, '], [');
     
     // Reparar comas faltantes después de valores
@@ -336,6 +349,22 @@ function repairJson(jsonStr: string): string | null {
     repaired = repaired.replace(/,\s*,/g, ',');
     repaired = repaired.replace(/,\s*]/g, ']');
     repaired = repaired.replace(/,\s*}/g, '}');
+    
+    // Reparar JSON truncado - agregar cierres faltantes
+    const openBraces = (repaired.match(/\{/g) || []).length;
+    const closeBraces = (repaired.match(/\}/g) || []).length;
+    const openBrackets = (repaired.match(/\[/g) || []).length;
+    const closeBrackets = (repaired.match(/\]/g) || []).length;
+    
+    // Agregar cierres faltantes para arrays
+    for (let i = 0; i < openBrackets - closeBrackets; i++) {
+      repaired += ']';
+    }
+    
+    // Agregar cierres faltantes para objetos
+    for (let i = 0; i < openBraces - closeBraces; i++) {
+      repaired += '}';
+    }
     
     // Asegurar que el JSON esté completo
     if (!repaired.includes('"suggestions"')) {
@@ -387,6 +416,14 @@ function repairJson(jsonStr: string): string | null {
     
     if (endIndex > suggestionsStart) {
       repaired = repaired.substring(0, endIndex + 1);
+    }
+    
+    // Si el JSON está truncado, intentar completarlo
+    if (endIndex === repaired.length - 1 && braceCount > 0) {
+      // Agregar cierres faltantes
+      for (let i = 0; i < braceCount; i++) {
+        repaired += '}';
+      }
     }
     
     console.log('JSON reparado:', repaired.substring(0, 200) + '...');

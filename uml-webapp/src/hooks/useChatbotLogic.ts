@@ -143,8 +143,8 @@ export function useChatbotLogic(
                 // Crear el enlace con el tipo correcto
                 const link = createUmlLinkLib(linkType, graphRef.current!, String(sourceCell.id), String(targetCell.id));
                 
-                // Aplicar etiquetas y multiplicidades si están disponibles
-                if (link && (rel.label || rel.multiplicity || rel.sourceMultiplicity)) {
+                // Aplicar etiquetas, multiplicidades y roles si están disponibles
+                if (link && (rel.label || rel.multiplicity || rel.sourceMultiplicity || rel.sourceRole || rel.targetRole)) {
                   const labels: any[] = [];
                   
                   // Etiqueta de la relación (en el medio)
@@ -174,6 +174,60 @@ export function useChatbotLogic(
                           yAlignment: 'middle',
                           rx: 3,
                           ry: 3
+                        }
+                      }
+                    });
+                  }
+                  
+                  // Rol del origen (posición 0.2 para evitar solapamiento con multiplicidad)
+                  if (rel.sourceRole) {
+                    labels.push({
+                      id: 'source-role',
+                      position: 0.2,
+                      attrs: {
+                        text: {
+                          text: rel.sourceRole,
+                          fill: '#000000',
+                          fontSize: 16,
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                          fontWeight: '500',
+                          textAnchor: 'middle',
+                          yAlignment: 'middle'
+                        },
+                        body: {
+                          fill: '#ffffff',
+                          stroke: '#000000',
+                          'stroke-width': 1,
+                          rx: 4,
+                          ry: 4,
+                          padding: 8
+                        }
+                      }
+                    });
+                  }
+                  
+                  // Rol del destino (posición 0.8 para evitar solapamiento con multiplicidad)
+                  if (rel.targetRole) {
+                    labels.push({
+                      id: 'target-role',
+                      position: 0.8,
+                      attrs: {
+                        text: {
+                          text: rel.targetRole,
+                          fill: '#000000',
+                          fontSize: 16,
+                          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                          fontWeight: '500',
+                          textAnchor: 'middle',
+                          yAlignment: 'middle'
+                        },
+                        body: {
+                          fill: '#ffffff',
+                          stroke: '#000000',
+                          'stroke-width': 1,
+                          rx: 4,
+                          ry: 4,
+                          padding: 8
                         }
                       }
                     });
@@ -272,9 +326,11 @@ export function useChatbotLogic(
     // Crear un mapa para rastrear las relaciones ya creadas
     const createdRelationships = new Set<string>();
     
-    // Función para generar una clave única para una relación
+    // Función para generar una clave única para una relación (sin importar la dirección)
     const getRelationshipKey = (source: string, target: string, type: string) => {
-      return `${source}-${target}-${type}`;
+      // Ordenar alfabéticamente para que A-B sea igual a B-A
+      const sorted = [source, target].sort();
+      return `${sorted[0]}-${sorted[1]}-${type}`;
     };
 
     // Aplicar todas las sugerencias con posiciones organizadas
@@ -311,11 +367,10 @@ export function useChatbotLogic(
               );
               
               if (targetCell) {
-                // Verificar si la relación ya fue creada
+                // Verificar si la relación ya fue creada (sin importar la dirección)
                 const relationshipKey = getRelationshipKey(suggestion.name, rel.target, rel.type);
-                const reverseKey = getRelationshipKey(rel.target, suggestion.name, rel.type);
                 
-                if (!createdRelationships.has(relationshipKey) && !createdRelationships.has(reverseKey)) {
+                if (!createdRelationships.has(relationshipKey)) {
                   // Verificar que ambos elementos existen
                   if (!sourceCell || !targetCell) {
                     console.warn('Elementos fuente o destino no encontrados para relación:', rel);
@@ -349,7 +404,7 @@ export function useChatbotLogic(
                       });
                       
                       // Aplicar etiquetas y multiplicidades si están disponibles
-                      if (rel.label || rel.multiplicity || rel.sourceMultiplicity) {
+                      if (rel.label || rel.multiplicity || rel.sourceMultiplicity || rel.sourceRole || rel.targetRole) {
                         const labels: any[] = [];
                         
                         // Etiqueta de la relación (en el medio)
@@ -425,6 +480,70 @@ export function useChatbotLogic(
                             attrs: {
                               text: {
                                 text: rel.multiplicity,
+                                fill: '#000000',
+                                fontSize: 11,
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                textAnchor: 'middle',
+                                yAlignment: 'middle'
+                              },
+                              rect: {
+                                fill: '#ffffff',
+                                fillOpacity: 0.9,
+                                stroke: '#000000',
+                                strokeWidth: 1,
+                                refWidth: 1.1,
+                                refHeight: 1.2,
+                                refX: 0,
+                                refY: -8,
+                                xAlignment: 'middle',
+                                yAlignment: 'middle',
+                                rx: 2,
+                                ry: 2
+                              }
+                            }
+                          });
+                        }
+                        
+                        // Rol del origen (posición 0.2 para evitar solapamiento con multiplicidad)
+                        if (rel.sourceRole) {
+                          labels.push({
+                            id: 'source-role',
+                            position: 0.2,
+                            attrs: {
+                              text: {
+                                text: rel.sourceRole,
+                                fill: '#000000',
+                                fontSize: 11,
+                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                                textAnchor: 'middle',
+                                yAlignment: 'middle'
+                              },
+                              rect: {
+                                fill: '#ffffff',
+                                fillOpacity: 0.9,
+                                stroke: '#000000',
+                                strokeWidth: 1,
+                                refWidth: 1.1,
+                                refHeight: 1.2,
+                                refX: 0,
+                                refY: -8,
+                                xAlignment: 'middle',
+                                yAlignment: 'middle',
+                                rx: 2,
+                                ry: 2
+                              }
+                            }
+                          });
+                        }
+                        
+                        // Rol del destino (posición 0.8 para evitar solapamiento con multiplicidad)
+                        if (rel.targetRole) {
+                          labels.push({
+                            id: 'target-role',
+                            position: 0.8,
+                            attrs: {
+                              text: {
+                                text: rel.targetRole,
                                 fill: '#000000',
                                 fontSize: 11,
                                 fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',

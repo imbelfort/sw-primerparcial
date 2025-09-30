@@ -57,10 +57,6 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
   if (!paper) return;
   
   try {
-    // Guardar el estado actual del paper
-    const currentScale = paper.scale();
-    const currentTranslate = paper.translate();
-    
     // Obtener el área completa del diagrama
     const graph = (paper as any).model;
     const bbox = graph.getBBox();
@@ -79,19 +75,40 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
       height: bbox.height + (margin * 2)
     };
     
-    // Crear un SVG temporal con el área completa
+    // Crear un canvas temporal para la captura
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      alert('No se puede crear el contexto del canvas');
+      return;
+    }
+    
+    // Configurar canvas con alta resolución
+    const scaleFactor = 2; // Factor de escala para mayor resolución
+    canvas.width = exportBBox.width * scaleFactor;
+    canvas.height = exportBBox.height * scaleFactor;
+    
+    // Configurar contexto para mejor calidad
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    // Fondo blanco
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Obtener el SVG del paper directamente
     const svg = paper.svg.cloneNode(true) as SVGElement;
+    
+    if (!svg) {
+      alert('No se puede acceder al SVG del diagrama');
+      return;
+    }
     
     // Configurar el viewBox para incluir todo el diagrama
     svg.setAttribute('viewBox', `${exportBBox.x} ${exportBBox.y} ${exportBBox.width} ${exportBBox.height}`);
-    
-    // Configurar dimensiones con alta resolución para mejor calidad
-    const scaleFactor = 2; // Factor de escala para mayor resolución
-    const scaledWidth = exportBBox.width * scaleFactor;
-    const scaledHeight = exportBBox.height * scaleFactor;
-    
-    svg.setAttribute('width', scaledWidth.toString());
-    svg.setAttribute('height', scaledHeight.toString());
+    svg.setAttribute('width', exportBBox.width.toString());
+    svg.setAttribute('height', exportBBox.height.toString());
     
     // Asegurar que el fondo sea blanco
     svg.style.backgroundColor = 'white';
@@ -105,7 +122,7 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
     backgroundRect.setAttribute('fill', 'white');
     svg.insertBefore(backgroundRect, svg.firstChild);
     
-    // Mejorar solo la calidad del texto
+    // Mejorar la calidad del texto
     const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
     style.textContent = `
       text {
@@ -118,38 +135,16 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
     `;
     svg.appendChild(style);
     
+    // Convertir SVG a imagen
     const svgData = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
     
-    // Crear imagen desde SVG
     const img = new Image();
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
     
     img.onload = () => {
-      // Configurar canvas con alta resolución
-      const maxWidth = 1920;
-      const maxHeight = 1080;
-      let { width, height } = img;
-      
-      // Redimensionar si es muy grande, pero mantener calidad
-      if (width > maxWidth || height > maxHeight) {
-        const ratio = Math.min(maxWidth / width, maxHeight / height);
-        width *= ratio;
-        height *= ratio;
-      }
-      
-      // Configurar canvas con alta resolución
-      canvas.width = width;
-      canvas.height = height;
-      
-      // Configurar contexto para mejor calidad
-      ctx!.imageSmoothingEnabled = true;
-      ctx!.imageSmoothingQuality = 'high';
-      
-      // Dibujar imagen en canvas con fondo blanco
-      ctx!.fillStyle = 'white';
-      ctx!.fillRect(0, 0, width, height);
-      ctx!.drawImage(img, 0, 0, width, height);
+      // Dibujar imagen en canvas con escala
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       
       if (format === 'png') {
         // Descargar PNG con alta calidad
@@ -160,7 +155,7 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
       } else if (format === 'pdf') {
         // Crear PDF usando jsPDF
         const pdf = new jsPDF({
-          orientation: width > height ? 'landscape' : 'portrait',
+          orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
           unit: 'mm',
           format: 'a4'
         });
@@ -169,7 +164,7 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
         const imgWidth = pdfWidth - 20; // Margen de 10mm cada lado
-        const imgHeight = (height * imgWidth) / width;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
         
         // Centrar imagen en el PDF
         const x = (pdfWidth - imgWidth) / 2;
@@ -184,18 +179,15 @@ export const exportCanvas = (paper: joint.dia.Paper | null, format: 'pdf' | 'png
       }
       
       // Limpiar URL temporal
-      URL.revokeObjectURL(img.src);
+      URL.revokeObjectURL(url);
     };
     
     img.onerror = () => {
       console.error('Error al cargar la imagen SVG');
       alert('Error al procesar el diagrama para exportación');
-      URL.revokeObjectURL(img.src);
+      URL.revokeObjectURL(url);
     };
     
-    // Convertir SVG a imagen
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
     img.src = url;
     
   } catch (error) {

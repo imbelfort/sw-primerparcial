@@ -2,6 +2,7 @@
 // Herramientas avanzadas para edición de enlaces UML
 
 import * as joint from "jointjs";
+import { ConnectionFactory, JointJSConnectionRenderer } from "./connectionRenderer";
 
 // Tipos para enlaces UML
 export type LinkToolKind = "assoc" | "aggregation" | "composition" | "dependency" | "generalization";
@@ -76,9 +77,64 @@ export function updateLabelsTextAnchor(link: joint.dia.Link) {
 }
 
 /**
- * Router ortogonal personalizado simplificado
+ * Router ortogonal personalizado basado en la lógica propuesta
+ * Utiliza el sistema de conexiones mejorado
  */
 export function orthogonalRouter(vertices: any[], opt: any, linkView: any): any[] {
+  // Si ya hay vértices definidos, usarlos para evitar recálculos
+  if (vertices && vertices.length > 0) {
+    return vertices;
+  }
+
+  // Usar el nuevo sistema de conexiones si está disponible
+  if (linkView && linkView.sourceBBox && linkView.targetBBox) {
+    try {
+      const sourceElement = linkView.sourceBBox;
+      const targetElement = linkView.targetBBox;
+      
+      // Crear una conexión temporal para calcular la trayectoria
+      const source = {
+        x: sourceElement.x,
+        y: sourceElement.y,
+        width: sourceElement.width,
+        height: sourceElement.height
+      };
+      
+      const target = {
+        x: targetElement.x,
+        y: targetElement.y,
+        width: targetElement.width,
+        height: targetElement.height
+      };
+      
+      const connection = ConnectionFactory.create('association', source, target);
+      
+      // Capturar la trayectoria usando un canvas temporal
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        let track: Array<{x: number, y: number}> = [];
+        connection.render(ctx, (points) => {
+          track = points;
+        });
+        
+        if (track.length > 0) {
+          return track;
+        }
+      }
+    } catch (error) {
+      console.warn('Error usando nuevo sistema de conexiones, fallback a implementación original:', error);
+    }
+  }
+
+  // Fallback a la implementación original
+  return orthogonalRouterOriginal(vertices, opt, linkView);
+}
+
+/**
+ * Router ortogonal original (renombrado para mantener compatibilidad)
+ */
+export function orthogonalRouterOriginal(vertices: any[], opt: any, linkView: any): any[] {
   // Verificar que tenemos los datos necesarios
   if (!linkView || !linkView.sourceBBox || !linkView.targetBBox || 
       !linkView.sourceAnchor || !linkView.targetAnchor) {
@@ -653,35 +709,8 @@ export function createElementTools(element: joint.dia.Element): any[] {
 export function createLinkTools(link: joint.dia.Link, element: joint.dia.Element) {
   const tools: any[] = [];
   
-  if (link.source().id === element.id) {
-    tools.push(
-      new joint.linkTools.SourceAnchor({
-        resetAnchor: false,
-        restrictArea: false,
-        customAnchorAttributes: {
-          "stroke-width": 2,
-          fill: "#f8f9fa",
-          stroke: "#000000",
-          r: 6
-        }
-      })
-    );
-  }
-  
-  if (link.target().id === element.id) {
-    tools.push(
-      new joint.linkTools.TargetAnchor({
-        resetAnchor: false,
-        restrictArea: false,
-        customAnchorAttributes: {
-          "stroke-width": 2,
-          fill: "#f8f9fa",
-          stroke: "#000000",
-          r: 6
-        }
-      })
-    );
-  }
+  // Solo agregar herramientas cuando sea explícitamente necesario
+  // No crear herramientas automáticamente para evitar nodos no deseados
   
   return tools;
 }
@@ -710,6 +739,9 @@ export function createLabelEditTools(link: joint.dia.Link): any[] {
     })
   ];
   
+  // No agregar herramientas que creen nodos automáticos
+  // Solo herramientas básicas para evitar interferencia visual
+  
   return tools;
 }
 
@@ -720,41 +752,12 @@ export function createLinkWithLabelsTools(link: joint.dia.Link, element: joint.d
   const tools = [
     new joint.linkTools.Remove({
       distance: 20
-    }),
-    new joint.linkTools.Vertices(),
-    new joint.linkTools.Segments()
+    })
+    // Removido Vertices y Segments para evitar nodos automáticos
   ];
   
-  // Agregar herramientas de ancla si el elemento está conectado
-  if (link.source().id === element.id) {
-    tools.push(
-      new joint.linkTools.SourceAnchor({
-        resetAnchor: false,
-        restrictArea: false,
-        customAnchorAttributes: {
-          "stroke-width": 2,
-          fill: "#f8f9fa",
-          stroke: "#000000",
-          r: 6
-        }
-      })
-    );
-  }
-  
-  if (link.target().id === element.id) {
-    tools.push(
-      new joint.linkTools.TargetAnchor({
-        resetAnchor: false,
-        restrictArea: false,
-        customAnchorAttributes: {
-          "stroke-width": 2,
-          fill: "#f8f9fa",
-          stroke: "#000000",
-          r: 6
-        }
-      })
-    );
-  }
+  // No agregar herramientas de ancla automáticamente
+  // Esto evita la creación de nodos cuando se hace clic en enlaces
   
   return tools;
 }
@@ -768,13 +771,22 @@ export const UML_LINK_CONFIG = {
     name: 'rounded',
     args: { radius: 15 }
   },
-  router: orthogonalRouter,
+  router: {
+    name: 'orthogonal',
+    args: {
+      padding: 20,
+      step: 20
+    }
+  },
+  // Usar el nuevo router ortogonal mejorado
+  customRouter: orthogonalRouter,
   connectionPoint: {
     name: 'boundary',
     args: {
       sticky: true,
       offset: 3,
-      priority: ['right', 'left', 'top', 'bottom']
+      priority: ['right', 'left', 'top', 'bottom'],
+      selector: 'body'
     }
   },
   defaultLabel: {
@@ -925,126 +937,87 @@ export function applyLinkDataToCell(cell: any, data: Partial<LinkData>) {
   if (!cell?.isLink?.()) return;
   
   try {
-    const labels: any[] = [];
+    // Obtener labels existentes
+    const existingLabels = cell.get('labels') || [];
+    const labelsMap = new Map();
     
-    if (data.sourceMultiplicity) {
-      labels.push({
-        id: 'source-multiplicity',
-        position: 0.1,
-        attrs: {
-          text: {
-            text: data.sourceMultiplicity,
-            fill: '#000000',
-            fontSize: 16,
-            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontWeight: '500',
-            textAnchor: 'middle',
-            yAlignment: 'middle'
-          },
-          body: {
-            fill: '#ffffff',
-            stroke: '#000000',
-            'stroke-width': 1,
-            rx: 4,
-            ry: 4,
-            padding: 8
-          }
+    // Mapear labels existentes por ID
+    existingLabels.forEach((label: any) => {
+      if (label.id) {
+        labelsMap.set(label.id, label);
+      }
+    });
+    
+    // Función para crear un label
+    const createLabel = (id: string, text: string, position: number) => ({
+      id,
+      position,
+      attrs: {
+        text: {
+          text,
+          fill: '#000000',
+          fontSize: 16,
+          fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          fontWeight: '500',
+          textAnchor: 'middle',
+          yAlignment: 'middle'
+        },
+        body: {
+          fill: '#ffffff',
+          stroke: '#000000',
+          'stroke-width': 1,
+          rx: 4,
+          ry: 4,
+          padding: 8
         }
-      });
+      }
+    });
+    
+    // Actualizar o agregar labels según los datos proporcionados
+    // Multiplicidades en posiciones 0.1 y 0.9 (cerca de los elementos)
+    if (data.sourceMultiplicity) {
+      labelsMap.set('source-multiplicity', createLabel('source-multiplicity', data.sourceMultiplicity, 0.1));
     }
     
     if (data.targetMultiplicity) {
-      labels.push({
-        id: 'target-multiplicity',
-        position: 0.9,
-        attrs: {
-          text: {
-            text: data.targetMultiplicity,
-            fill: '#000000',
-            fontSize: 16,
-            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontWeight: '500',
-            textAnchor: 'middle',
-            yAlignment: 'middle'
-          },
-          body: {
-            fill: '#ffffff',
-            stroke: '#000000',
-            'stroke-width': 1,
-            rx: 4,
-            ry: 4,
-            padding: 8
-          }
-        }
-      });
+      labelsMap.set('target-multiplicity', createLabel('target-multiplicity', data.targetMultiplicity, 0.9));
     }
     
+    // Roles en posiciones 0.2 y 0.8 (más hacia el centro para evitar solapamiento)
     if (data.sourceRole) {
-      labels.push({
-        id: 'source-role',
-        position: 0.1,
-        attrs: {
-          text: {
-            text: data.sourceRole,
-            fill: '#000000',
-            fontSize: 16,
-            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontWeight: '500',
-            textAnchor: 'middle',
-            yAlignment: 'middle'
-          },
-          body: {
-            fill: '#ffffff',
-            stroke: '#000000',
-            'stroke-width': 1,
-            rx: 4,
-            ry: 4,
-            padding: 8
-          }
-        }
-      });
+      labelsMap.set('source-role', createLabel('source-role', data.sourceRole, 0.2));
     }
     
     if (data.targetRole) {
-      labels.push({
-        id: 'target-role',
-        position: 0.9,
-        attrs: {
-          text: {
-            text: data.targetRole,
-            fill: '#000000',
-            fontSize: 16,
-            fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontWeight: '500',
-            textAnchor: 'middle',
-            yAlignment: 'middle'
-          },
-          body: {
-            fill: '#ffffff',
-            stroke: '#000000',
-            'stroke-width': 1,
-            rx: 4,
-            ry: 4,
-            padding: 8
-          }
-        }
-      });
+      labelsMap.set('target-role', createLabel('target-role', data.targetRole, 0.8));
     }
     
-    if (labels.length > 0) {
-      cell.set('labels', labels);
+    // Convertir el mapa de vuelta a array, preservando labels sin ID
+    const updatedLabels = Array.from(labelsMap.values());
+    
+    // Agregar labels existentes que no tienen ID (como etiquetas de relación)
+    existingLabels.forEach((label: any) => {
+      if (!label.id) {
+        updatedLabels.push(label);
+      }
+    });
+    
+    // Aplicar los labels actualizados
+    if (updatedLabels.length > 0) {
+      cell.set('labels', updatedLabels);
     }
     
-    // Asegurar que el link sea seleccionable
+    // Asegurar que el link sea seleccionable pero no movible
     cell.set('selectable', true);
     cell.set('interactive', true);
+    cell.set('movable', false);
   } catch (error) {
     console.error('Error en applyLinkDataToCell:', error, { cell, data });
   }
 }
 
 /**
- * Crea un enlace UML entre dos elementos
+ * Crea un enlace UML entre dos elementos usando el nuevo sistema de conexiones
  */
 export function createUmlLink(kind: LinkToolKind, graph: joint.dia.Graph, sourceId: string, targetId: string) {
   if (sourceId === targetId) return;
@@ -1123,10 +1096,54 @@ export function createUmlLink(kind: LinkToolKind, graph: joint.dia.Graph, source
       });
     }
     
+    // Aplicar el router personalizado si está disponible
+    if (link && link.set) {
+      link.set('router', orthogonalRouter);
+    }
+    
     link.addTo(graph);
     return link;
   } catch (e) {
     console.error("createUmlLink error", e);
     return null;
   }
+}
+
+/**
+ * Función para renderizar conexiones usando el nuevo sistema
+ * Útil para renderizado personalizado o exportación
+ */
+export function renderConnectionWithNewSystem(
+  ctx: CanvasRenderingContext2D,
+  sourceElement: joint.dia.Element,
+  targetElement: joint.dia.Element,
+  type: LinkToolKind = 'assoc'
+) {
+  return JointJSConnectionRenderer.renderConnection(ctx, sourceElement, targetElement, type);
+}
+
+/**
+ * Función para obtener la trayectoria de una conexión sin renderizar
+ */
+export function getConnectionTrack(
+  sourceElement: joint.dia.Element,
+  targetElement: joint.dia.Element,
+  type: LinkToolKind = 'assoc'
+): Array<{x: number, y: number}> {
+  const source = JointJSConnectionRenderer.elementToConnectionFormat(sourceElement);
+  const target = JointJSConnectionRenderer.elementToConnectionFormat(targetElement);
+  
+  const connection = ConnectionFactory.create(type, source, target);
+  let track: Array<{x: number, y: number}> = [];
+  
+  // Usar un canvas temporal para capturar la trayectoria
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    connection.render(ctx, (points) => {
+      track = points;
+    });
+  }
+  
+  return track;
 }
