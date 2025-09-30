@@ -8,6 +8,7 @@ import { LinkInspector } from "../../../components/LinkInspector";
 import { ZoomControls } from "../../../components/ZoomControls";
 import { Chatbot, DiagramSuggestionCard } from "../../../components/Chatbot";
 import { SpringCodeGeneratorComponent } from "../../../components/SpringCodeGenerator";
+import { ContextualSuggestions } from "../../../components/ContextualSuggestions";
 import { UserPresence } from "../../../components/UserPresence";
 import { PeerSelectionOverlay } from "../../../components/PeerSelectionOverlay";
 import { applyClassDataToCell } from "../../../lib/umlTools";
@@ -70,6 +71,9 @@ export default function DiagramByIdPage() {
 
   // Estado para el generador de código Spring
   const [showSpringGenerator, setShowSpringGenerator] = useState(false);
+  
+  // Estado para sugerencias contextuales
+  const [showContextualSuggestions, setShowContextualSuggestions] = useState(false);
 
   // Hooks para navegación
   const {
@@ -277,7 +281,11 @@ export default function DiagramByIdPage() {
             }}
           />
           {/* Controles de zoom minimalistas */}
-          <ZoomControls paper={paperRef.current} className="absolute bottom-6 right-6" />
+          <ZoomControls 
+            paper={paperRef.current} 
+            className="absolute bottom-6 right-6"
+            onSuggestions={() => setShowContextualSuggestions(true)}
+          />
           
           {/* Pending link hint minimalista */}
           {linkSourceId && (
@@ -413,6 +421,15 @@ export default function DiagramByIdPage() {
         <SpringCodeGeneratorComponent
           graph={graphRef.current}
           onClose={() => setShowSpringGenerator(false)}
+        />
+      )}
+
+      {/* Contextual Suggestions Modal */}
+      {showContextualSuggestions && (
+        <ContextualSuggestions
+          paper={paperRef.current}
+          onApplySuggestion={handleApplySuggestion}
+          onClose={() => setShowContextualSuggestions(false)}
         />
       )}
 
