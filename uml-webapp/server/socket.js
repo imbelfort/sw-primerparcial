@@ -125,6 +125,16 @@ io.on('connection', (socket) => {
     (async () => {
       try {
         const current = roomState.get(diagramId) || { json: null, version: 0 };
+        
+        // Verificar si el JSON es realmente diferente para evitar bucles
+        const currentJsonString = JSON.stringify(current.json);
+        const newJsonString = JSON.stringify(json);
+        
+        if (currentJsonString === newJsonString) {
+          console.log('[socket] Ignoring identical JSON update from', clientId);
+          return;
+        }
+        
         const version = current.version + 1;
         const newState = { json, version, updatedAt: Date.now() };
         roomState.set(diagramId, newState);
@@ -137,8 +147,10 @@ io.on('connection', (socket) => {
           { upsert: true }
         );
 
-        // broadcast to others in the room
+        // broadcast to others in the room (exclude sender)
         socket.to(diagramId).emit('graph:state', { ...newState, from: clientId });
+        
+        console.log('[socket] Graph updated by', clientId, 'version', version);
       } catch (err) {
         console.error('[socket] graph:update persist error', err);
       }

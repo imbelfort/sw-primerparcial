@@ -14,6 +14,8 @@ export function useSocketIO(
   setPeerSelections?: React.Dispatch<React.SetStateAction<Record<string, { cellId: string; type: 'class' | 'link'; ts: number }>>>
 ) {
   const socketRef = useRef<Socket | null>(null);
+  const lastUpdateTimeRef = useRef<number>(0);
+  const updateCountRef = useRef<number>(0);
 
   // Inicializar Socket.IO
   useEffect(() => {
@@ -46,9 +48,34 @@ export function useSocketIO(
     socket.on("graph:state", (state: any) => {
       if (!graphRef?.current) return;
       if (state?.from === socket.id) return;
+      
+      // Verificar si ya estamos procesando un cambio remoto
+      if (suppressRemoteRef.current) return;
+      
+      // Detectar bucles: si recibimos muchas actualizaciones en poco tiempo
+      const now = Date.now();
+      if (now - lastUpdateTimeRef.current < 1000) {
+        updateCountRef.current++;
+        if (updateCountRef.current > 10) {
+          console.warn('[socket] Detected potential loop, suppressing updates for 2 seconds');
+          suppressRemoteRef.current = true;
+          setTimeout(() => {
+            suppressRemoteRef.current = false;
+            updateCountRef.current = 0;
+          }, 2000);
+          return;
+        }
+      } else {
+        updateCountRef.current = 0;
+      }
+      lastUpdateTimeRef.current = now;
+      
       suppressRemoteRef.current = true;
       try {
+        // Usar batch para evitar múltiples eventos
+        graphRef.current.startBatch('remote-update');
         graphRef.current.fromJSON(state.json);
+        graphRef.current.stopBatch('remote-update');
         
         // Aplicar router personalizado después de cargar desde JSON
         setTimeout(() => {
@@ -57,9 +84,10 @@ export function useSocketIO(
           }
         }, 200);
       } finally {
+        // Aumentar el tiempo de supresión para evitar bucles
         setTimeout(() => {
           suppressRemoteRef.current = false;
-        }, 50);
+        }, 300);
       }
     });
 
@@ -113,14 +141,33 @@ export function useSocketIO(
     if (!graphRef?.current || !diagramId) return;
 
     let timeout: any = null;
+    let lastSentJson: string | null = null;
+    let isProcessing = false;
+    
     const handler = () => {
       if (suppressRemoteRef.current) return;
+      if (isProcessing) return;
+      
       if (timeout) clearTimeout(timeout);
       timeout = setTimeout(() => {
-        const json = graphRef?.current?.toJSON();
-        const clientId = socketRef.current?.id;
-        socketRef.current?.emit("graph:update", { diagramId, json, clientId });
-      }, 200);
+        if (suppressRemoteRef.current) return;
+        if (isProcessing) return;
+        
+        isProcessing = true;
+        try {
+          const json = graphRef?.current?.toJSON();
+          const jsonString = JSON.stringify(json);
+          
+          // Solo enviar si el JSON ha cambiado realmente
+          if (jsonString !== lastSentJson) {
+            lastSentJson = jsonString;
+            const clientId = socketRef.current?.id;
+            socketRef.current?.emit("graph:update", { diagramId, json, clientId });
+          }
+        } finally {
+          isProcessing = false;
+        }
+      }, 300); // Aumentar el debounce para reducir frecuencia
     };
 
     (graphRef.current as any)?.on?.("change add remove", handler);
