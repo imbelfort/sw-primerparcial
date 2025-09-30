@@ -123,8 +123,13 @@ export class CanvasAnalysisService {
   private static analyzeRelationship(cell: joint.dia.Cell): CanvasRelationship | null {
     try {
       const type = cell.get('type') || '';
-      const source = cell.getSourceCell();
-      const target = cell.getTargetCell();
+      
+      // Verificar si es un link
+      if (!(cell as any).isLink || !(cell as any).isLink()) return null;
+      
+      const link = cell as joint.dia.Link;
+      const source = link.getSourceElement();
+      const target = link.getTargetElement();
       
       if (!source || !target) return null;
 
