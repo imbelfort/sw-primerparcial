@@ -6,7 +6,27 @@ const { Server } = require('socket.io');
 const mongoose = require('mongoose');
 
 const PORT = process.env.SOCKET_PORT || process.env.PORT || 3001;
-const MONGO_URL = process.env.MONGODB_URI || process.env.MONGO_URL || 'mongodb://root:example@localhost:27017/?authSource=admin';
+
+// Función para obtener y validar la URL de MongoDB
+function getMongoUrl() {
+  const mongoUrl = process.env.MONGODB_URI || process.env.MONGO_URL || process.env.DATABASE_URL;
+  
+  if (!mongoUrl) {
+    console.warn('[socket] No MongoDB URL found, using in-memory storage only');
+    return null;
+  }
+  
+  // Validar que la URL tenga el esquema correcto
+  if (!mongoUrl.startsWith('mongodb://') && !mongoUrl.startsWith('mongodb+srv://')) {
+    console.error('[socket] Invalid MongoDB URL scheme. Expected mongodb:// or mongodb+srv://');
+    console.error('[socket] Current URL:', mongoUrl);
+    return null;
+  }
+  
+  return mongoUrl;
+}
+
+const MONGO_URL = getMongoUrl();
 
 const server = http.createServer();
 const io = new Server(server, {
@@ -37,13 +57,20 @@ const Diagram = mongoose.models.Diagram || mongoose.model('Diagram', diagramSche
 
 async function ensureDb() {
   if (mongoose.connection.readyState === 1) return;
+  
+  if (!MONGO_URL) {
+    console.log('[socket] MongoDB not configured, using in-memory storage only');
+    return;
+  }
+  
   try {
     console.log('[socket] Connecting to MongoDB...');
     await mongoose.connect(MONGO_URL, { dbName: 'uml' });
     console.log('[socket] MongoDB connected successfully');
   } catch (error) {
     console.error('[socket] MongoDB connection error:', error);
-    throw error;
+    console.log('[socket] Falling back to in-memory storage only');
+    // No lanzar error, continuar con almacenamiento en memoria
   }
 }
 
@@ -79,10 +106,13 @@ io.on('connection', (socket) => {
         let state = roomState.get(diagramId);
         if (!state) {
           await ensureDb();
-          const doc = await Diagram.findOne({ diagramId }).lean();
-          if (doc) {
-            state = { json: doc.json, version: doc.version, updatedAt: doc.updatedAt?.getTime?.() || Date.now() };
-            roomState.set(diagramId, state);
+          // Solo intentar cargar desde DB si MongoDB está disponible
+          if (mongoose.connection.readyState === 1) {
+            const doc = await Diagram.findOne({ diagramId }).lean();
+            if (doc) {
+              state = { json: doc.json, version: doc.version, updatedAt: doc.updatedAt?.getTime?.() || Date.now() };
+              roomState.set(diagramId, state);
+            }
           }
         }
         if (state) {
@@ -139,13 +169,15 @@ io.on('connection', (socket) => {
         const newState = { json, version, updatedAt: Date.now() };
         roomState.set(diagramId, newState);
 
-        // persist to DB (upsert)
+        // persist to DB (upsert) - solo si MongoDB está disponible
         await ensureDb();
-        await Diagram.updateOne(
-          { diagramId },
-          { $set: { json, version, updatedAt: new Date(newState.updatedAt) } },
-          { upsert: true }
-        );
+        if (mongoose.connection.readyState === 1) {
+          await Diagram.updateOne(
+            { diagramId },
+            { $set: { json, version, updatedAt: new Date(newState.updatedAt) } },
+            { upsert: true }
+          );
+        }
 
         // broadcast to others in the room (exclude sender)
         socket.to(diagramId).emit('graph:state', { ...newState, from: clientId });
@@ -189,6 +221,7 @@ server.listen(PORT, () => {
   console.log(`[socket] listening on port ${PORT}`);
   console.log(`[socket] environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`[socket] MongoDB URI: ${MONGO_URL ? 'configured' : 'not configured'}`);
+  console.log(`[socket] Storage mode: ${MONGO_URL ? 'MongoDB + in-memory' : 'in-memory only'}`);
   console.log(`[socket] CORS origin: ${process.env.NODE_ENV === 'production' ? 'all origins' : 'localhost only'}`);
 });
 
