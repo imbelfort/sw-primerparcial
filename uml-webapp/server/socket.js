@@ -204,63 +204,17 @@ io.on('connection', (socket) => {
 
 // Health check endpoint
 server.on('request', (req, res) => {
-  // Configurar CORS para todas las respuestas
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
-  }
-  
   if (req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ 
       status: 'ok', 
       timestamp: new Date().toISOString(),
       port: PORT,
-      environment: process.env.NODE_ENV || 'development',
-      storage: MONGO_URL ? 'MongoDB + in-memory' : 'in-memory only',
-      connectedClients: io.engine.clientsCount
+      environment: process.env.NODE_ENV || 'development'
     }));
     return;
   }
-  
-  if (req.url === '/') {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>UML Socket Server</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
-            .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            .status { color: #28a745; font-weight: bold; }
-            .info { margin: 10px 0; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>🔌 UML Socket Server</h1>
-            <p class="status">✅ Server is running</p>
-            <div class="info"><strong>Port:</strong> ${PORT}</div>
-            <div class="info"><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</div>
-            <div class="info"><strong>Storage:</strong> ${MONGO_URL ? 'MongoDB + in-memory' : 'in-memory only'}</div>
-            <div class="info"><strong>Connected clients:</strong> ${io.engine.clientsCount}</div>
-            <div class="info"><strong>Health check:</strong> <a href="/health">/health</a></div>
-          </div>
-        </body>
-      </html>
-    `);
-    return;
-  }
-  
-  // Para todas las demás rutas, responder 404
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
+  // Para todas las demás rutas, no responder (dejar que Socket.IO maneje)
 });
 
 server.listen(PORT, () => {
